@@ -23,7 +23,7 @@ COPY . .
 # Failing to do this sometimes leaves stale wildcard includes from the earlier
 # restore stage, leading to errors such as "File name '**/*.cs' is empty".
 RUN dotnet restore ECommerce/ECommerce.csproj
-RUN dotnet publish ECommerce/ECommerce.csproj -c Release -o /app/publish
+RUN dotnet publish ECommerce/ECommerce.csproj -c Release -o /app/publish --verbosity detailed 2>&1
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
