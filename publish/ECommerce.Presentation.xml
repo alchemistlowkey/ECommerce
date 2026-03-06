@@ -1,0 +1,66 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>ECommerce.Presentation</name>
+    </assembly>
+    <members>
+        <member name="M:ECommerce.Presentation.Controllers.AuthController.Register(Shared.DataTransferObjects.Auth.RegisterRequestDto)">
+            <summary>Register a new customer account.</summary>
+        </member>
+        <member name="M:ECommerce.Presentation.Controllers.AuthController.Login(Shared.DataTransferObjects.Auth.LoginRequestDto)">
+            <summary>Login and receive a JWT token.</summary>
+        </member>
+        <member name="M:ECommerce.Presentation.Controllers.CartController.GetCart">
+            <summary>Get the current user's cart.</summary>
+        </member>
+        <member name="M:ECommerce.Presentation.Controllers.CartController.AddItem(Shared.DataTransferObjects.Cart.AddToCartRequestDto)">
+            <summary>Add a product to the cart.</summary>
+        </member>
+        <member name="M:ECommerce.Presentation.Controllers.CartController.UpdateItem(System.Guid,Shared.DataTransferObjects.Cart.UpdateCartItemRequestDto)">
+            <summary>Update the quantity of a cart item. Set quantity to 0 to remove.</summary>
+        </member>
+        <member name="M:ECommerce.Presentation.Controllers.CartController.RemoveItem(System.Guid)">
+            <summary>Remove a specific item from the cart.</summary>
+        </member>
+        <member name="M:ECommerce.Presentation.Controllers.OrdersController.Checkout">
+            <summary>
+            Checkout: converts the current cart into an order and creates a Stripe PaymentIntent.
+            Returns a clientSecret for stripe, authorization_url for Paystack, to complete payment.
+            The PaymentProvider field in the response tells the frontend which flow to use.
+            </summary>
+        </member>
+        <member name="M:ECommerce.Presentation.Controllers.OrdersController.GetOrders">
+            <summary>Get all orders for the current user.</summary>
+        </member>
+        <member name="M:ECommerce.Presentation.Controllers.OrdersController.GetOrder(System.Guid)">
+            <summary>Get a specific order by ID.</summary>
+        </member>
+        <member name="M:ECommerce.Presentation.Controllers.OrdersController.StripeWebhook">
+            <summary>
+            Stripe webhook endpoint. Called by Stripe after payment events.
+            Must be excluded from JWT auth — Stripe authenticates via its own signature.
+            </summary>
+        </member>
+        <member name="M:ECommerce.Presentation.Controllers.OrdersController.PaystackWebhook">
+            <summary>
+            Paystack webhook — receives payment events from Paystack.
+            Paystack authenticates via HMAC-SHA512 in the x-paystack-signature header.
+            </summary>
+        </member>
+        <member name="M:ECommerce.Presentation.Controllers.ProductsController.GetProducts(System.String,System.String,System.Int32,System.Int32)">
+            <summary>Get all active products with optional search and category filter.</summary>
+        </member>
+        <member name="M:ECommerce.Presentation.Controllers.ProductsController.GetProduct(System.Guid)">
+            <summary>Get a single product by ID.</summary>
+        </member>
+        <member name="M:ECommerce.Presentation.Controllers.ProductsController.CreateProduct(Shared.DataTransferObjects.Product.CreateProductRequestDto)">
+            <summary>Create a new product. Admin only.</summary>
+        </member>
+        <member name="M:ECommerce.Presentation.Controllers.ProductsController.UpdateProduct(System.Guid,Shared.DataTransferObjects.Product.UpdateProductRequestDto)">
+            <summary>Update an existing product. Admin only.</summary>
+        </member>
+        <member name="M:ECommerce.Presentation.Controllers.ProductsController.DeleteProduct(System.Guid)">
+            <summary>Delete a product. Admin only.</summary>
+        </member>
+    </members>
+</doc>
