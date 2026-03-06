@@ -18,7 +18,10 @@ RUN dotnet restore
 
 # Copy source and publish
 COPY . .
-RUN dotnet publish ECommerce/ECommerce.csproj -c Release -o /app/publish --no-restore
+# run publish without skipping restore so that all source files (including any
+# resources) are present; `--no-restore` can lead to MSBuild wildcard errors when
+# the initial restore happened before the full context was copied.
+RUN dotnet publish ECommerce/ECommerce.csproj -c Release -o /app/publish
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final

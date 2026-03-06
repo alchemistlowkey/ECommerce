@@ -143,6 +143,24 @@ Shared                 ← (no dependencies)
 5. **API Documentation**
    Swagger is enabled by default. Visit `/swagger` after starting the app.
 
+### 🐳 Docker
+
+A `Dockerfile` is provided for creating a containerized build. See the file for
+a typical multi‑stage build; key points:
+
+- copy project files first, run `dotnet restore` to leverage layer caching
+- copy remaining source, then `dotnet publish` to produce the runtime output
+
+When running `dotnet publish` inside the build stage **do not** use
+`--no-restore`. Omitting the flag ensures all files (including any resource
+files) are available; a stale restore can trigger the following error during
+container builds:
+
+```
+MSB3552: Resource file "**/*.resx" cannot be found.
+```
+
+The Dockerfile in this repo already calls publish without that option.
 
 ---
 
