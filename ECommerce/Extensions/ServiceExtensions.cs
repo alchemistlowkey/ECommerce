@@ -47,10 +47,6 @@ public static class ServiceExtensions
             services.AddScoped<IPaymentService, StripePaymentService>();
     }
 
-    public static void ConfigureSqlContext(this IServiceCollection services, IConfiguration configuration) =>
-        services.AddDbContext<RepositoryContext>(opts =>
-        opts.UseSqlServer(configuration.GetConnectionString("sqlConnection")));
-
     public static void ConfigurePostgreSqlContext(this IServiceCollection services, IConfiguration configuration) =>
         services.AddDbContext<RepositoryContext>(opts =>
         opts.UseNpgsql(configuration.GetConnectionString("sqlConnection"),

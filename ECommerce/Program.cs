@@ -7,7 +7,6 @@ var builder = WebApplication.CreateBuilder(args);
 
 // ── Infrastructure ───────────────────────────────────────────────────────────
 builder.Services.ConfigureCors();
-// builder.Services.ConfigureSqlContext(builder.Configuration);
 builder.Services.ConfigurePostgreSqlContext(builder.Configuration);
 
 // ── Identity (must come after DbContext, before JWT) ─────────────────────────
