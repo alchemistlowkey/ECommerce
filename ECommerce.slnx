@@ -1,0 +1,10 @@
+<Solution>
+    <Project Path="Contracts/Contracts.csproj" />
+    <Project Path="ECommerce.Presentation/ECommerce.Presentation.csproj" />
+    <Project Path="ECommerce/ECommerce.csproj" />
+    <Project Path="Entities/Entities.csproj" />
+    <Project Path="Repository/Repository.csproj" />
+    <Project Path="Service.Contracts/Service.Contracts.csproj" />
+    <Project Path="Service/Service.csproj" />
+    <Project Path="Shared/Shared.csproj" />
+</Solution>
