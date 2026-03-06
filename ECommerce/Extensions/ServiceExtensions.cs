@@ -145,7 +145,8 @@ public static class ServiceExtensions
 
             var xmlFile = $"{typeof(Presentation.AssemblyReference).Assembly.GetName().Name}.xml";
             var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
-            s.IncludeXmlComments(xmlPath);
+            if (File.Exists(xmlPath))
+                s.IncludeXmlComments(xmlPath);
 
             s.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
             {
