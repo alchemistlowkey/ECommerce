@@ -39,7 +39,6 @@ builder.Services.AddControllers()
     });
 
 // ── Swagger ───────────────────────────────────────────────────────────────────
-builder.Services.ConfigureSwagger();
 builder.Services.AddEndpointsApiExplorer();
 
 // ── Authorization ─────────────────────────────────────────────────────────────
@@ -53,11 +52,7 @@ app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
-    app.UseSwagger();
 
-    app.UseSwaggerUI(s =>
-        s.SwaggerEndpoint("/swagger/v1/swagger.json", "ECommerce API v1")
-    );
 }
 
 app.UseHttpsRedirection();
