@@ -18,9 +18,11 @@ RUN dotnet restore
 
 # Copy source and publish
 COPY . .
-# run publish without skipping restore so that all source files (including any
-# resources) are present; `--no-restore` can lead to MSBuild wildcard errors when
-# the initial restore happened before the full context was copied.
+# After the full source tree is copied run restore again to ensure MSBuild
+# evaluates all glob patterns (razor, cshtml, cs, etc.) against the real files.
+# Failing to do this sometimes leaves stale wildcard includes from the earlier
+# restore stage, leading to errors such as "File name '**/*.cs' is empty".
+RUN dotnet restore ECommerce/ECommerce.csproj
 RUN dotnet publish ECommerce/ECommerce.csproj -c Release -o /app/publish
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
