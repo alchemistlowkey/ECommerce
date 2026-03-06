@@ -51,6 +51,11 @@ public static class ServiceExtensions
         services.AddDbContext<RepositoryContext>(opts =>
         opts.UseSqlServer(configuration.GetConnectionString("sqlConnection")));
 
+    public static void ConfigurePostgreSqlContext(this IServiceCollection services, IConfiguration configuration) =>
+        services.AddDbContext<RepositoryContext>(opts =>
+        opts.UseNpgsql(configuration.GetConnectionString("sqlConnection"),
+        b => b.MigrationsAssembly("Repository")));
+
     public static void ConfigureIdentity(this IServiceCollection services) =>
         services.AddIdentity<User, IdentityRole>(options =>
         {

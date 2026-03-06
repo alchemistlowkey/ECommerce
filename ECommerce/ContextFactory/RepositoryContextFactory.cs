@@ -16,7 +16,7 @@ public class RepositoryContextFactory : IDesignTimeDbContextFactory<RepositoryCo
 
         var builder = new DbContextOptionsBuilder<RepositoryContext>()
             .UseSqlServer(configuration.GetConnectionString("sqlConnection"),
-            b => b.MigrationsAssembly("ECommerce"));
+            b => b.MigrationsAssembly("Repository"));
 
         return new RepositoryContext(builder.Options);
     }
