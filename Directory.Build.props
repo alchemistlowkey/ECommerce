@@ -1,0 +1,7 @@
+<Project>
+    <PropertyGroup>
+        <!-- Suppress the **/*.resx wildcard that causes MSB3552 in dotnet SDK 10.0.103
+         when the bin/Debug directory doesn't exist (e.g. Docker Release builds). -->
+        <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
+    </PropertyGroup>
+</Project>
