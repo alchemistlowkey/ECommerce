@@ -11,11 +11,10 @@ COPY Service/Service.csproj                               Service/
 COPY Service.Contracts/Service.Contracts.csproj           Service.Contracts/
 COPY Shared/Shared.csproj                                 Shared/
 
-RUN dotnet restore -p:EnableDefaultEmbeddedResourceItems=false
+RUN dotnet restore
 
 COPY . .
 RUN dotnet publish ECommerce/ECommerce.csproj -c Release -o /app/publish \
-    --no-restore \
     -p:EnableDefaultEmbeddedResourceItems=false
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
