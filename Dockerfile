@@ -1,8 +1,7 @@
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0.100 AS build
 WORKDIR /src
 
 COPY ECommerce.slnx .
-COPY Directory.Build.props .
 COPY ECommerce/ECommerce.csproj                           ECommerce/
 COPY ECommerce.Presentation/ECommerce.Presentation.csproj ECommerce.Presentation/
 COPY Entities/Entities.csproj                             Entities/
