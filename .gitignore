@@ -4,6 +4,10 @@ publish/
 *.user
 *.suo
 .vs/
+**/bin/
+**/obj/
+**/publish/
+"ECommerce/bin\\"
 appsettings.Development.json
 appsettings.Production.json
 *secrets*
