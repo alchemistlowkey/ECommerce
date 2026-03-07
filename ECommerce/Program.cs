@@ -5,6 +5,7 @@ using ECommerce.Middleware;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -57,6 +58,14 @@ if (app.Environment.IsDevelopment())
 {
 
 }
+
+app.MapOpenApi();
+app.MapScalarApiReference(options =>
+{
+    options.Title = "ECommerce API";
+    options.Theme = ScalarTheme.Purple;
+    options.DefaultHttpClient = new(ScalarTarget.JavaScript, ScalarClient.Fetch);
+});
 
 app.UseHttpsRedirection();
 app.UseCors("CorsPolicy");
