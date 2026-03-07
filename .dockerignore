@@ -5,6 +5,4 @@
 **/appsettings.Development.json
 **/appsettings.Production.json
 *.md
-.dockerignore
 .gitignore
-Dockerfile
