@@ -10,5 +10,5 @@ public record ProductResponseDto
     public string? Category { get; init; }
     public string? ImageUrl { get; init; }
     public bool IsActive { get; init; }
-    public DateTime CreatedAt { get; init; } = DateTime.Now;
+    public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
 };

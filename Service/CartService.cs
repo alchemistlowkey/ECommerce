@@ -53,7 +53,7 @@ public class CartService : ICartService
             {
                 Id = Guid.NewGuid(),
                 UserId = userId,
-                UpdatedAt = DateTime.Now
+                UpdatedAt = DateTime.UtcNow
             };
             _repository.Cart.CreateCart(cart);
         }
@@ -79,7 +79,7 @@ public class CartService : ICartService
             });
         }
 
-        cart.UpdatedAt = DateTime.Now;
+        cart.UpdatedAt = DateTime.UtcNow;
         await _repository.SaveAsync();
 
         var updated = await _repository.Cart.GetCartByUserIdAsync(userId, trackChanges: false);
@@ -113,7 +113,7 @@ public class CartService : ICartService
             item.Quantity = request.Quantity;
         }
 
-        cart.UpdatedAt = DateTime.Now;
+        cart.UpdatedAt = DateTime.UtcNow;
         await _repository.SaveAsync();
 
         var updated = await _repository.Cart.GetCartByUserIdAsync(userId, trackChanges: false);
@@ -132,7 +132,7 @@ public class CartService : ICartService
             ?? throw new KeyNotFoundException($"Cart item with id '{itemId}' was not found.");
 
         cart.Items.Remove(item);
-        cart.UpdatedAt = DateTime.Now;
+        cart.UpdatedAt = DateTime.UtcNow;
         await _repository.SaveAsync();
 
         var updated = await _repository.Cart.GetCartByUserIdAsync(userId, trackChanges: false);

@@ -9,7 +9,7 @@ public class User : IdentityUser
     [Required]
     [MaxLength(50)]
     public string Role { get; set; } = "Customer";
-    public DateTime CreatedAt { get; set; } = DateTime.Now;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public Cart? Cart { get; set; }
     public ICollection<Order> Orders { get; set; } = new List<Order>();
     public string? RefreshToken { get; set; }

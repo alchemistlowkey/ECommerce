@@ -1,3 +1,4 @@
+using System.Linq;
 using AutoMapper;
 using Entities.Models;
 using Shared.DataTransferObjects.Cart;

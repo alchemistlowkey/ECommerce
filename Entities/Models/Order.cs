@@ -28,5 +28,5 @@ public class Order
     public string? PaystackReference { get; set; }
 
     public string? PaymentProvider { get; set; }
-    public DateTime CreatedAt { get; set; } = DateTime.Now;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

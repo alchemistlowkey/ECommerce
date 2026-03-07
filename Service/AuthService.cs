@@ -74,7 +74,7 @@ public class AuthService : IAuthService
             issuer            : _jwtConfig.ValidIssuer,
             audience          : _jwtConfig.ValidAudience,
             claims            : claims,
-            expires           : DateTime.Now.AddMinutes(_jwtConfig.Expires), // "expires": 5 = 5 minutes
+            expires           : DateTime.UtcNow.AddMinutes(_jwtConfig.Expires), // "expires": 5 = 5 minutes
             signingCredentials: credentials
         );
 

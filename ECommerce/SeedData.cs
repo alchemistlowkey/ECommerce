@@ -1,4 +1,6 @@
 using System;
+using System.Linq;
+using System.Threading.Tasks;
 using Entities.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -29,7 +31,7 @@ public static class SeedData
                 UserName = adminEmail,
                 Email = adminEmail,
                 Role = "Admin",
-                CreatedAt = DateTime.Now
+                CreatedAt = DateTime.UtcNow
             };
 
             // UserManager hashes the password, validates complexity rules,
