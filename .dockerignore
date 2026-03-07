@@ -1,8 +1,9 @@
 **/bin/
 **/obj/
-**/.vscode/
-**/.git/
-**/appsettings.Development.json
-**/appsettings.Production.json
-*.md
-.gitignore
+*.user
+*.suo
+.vs/
+appsettings.Development.json
+appsettings.Production.json
+*secrets*
+.DS_Store
