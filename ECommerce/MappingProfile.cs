@@ -1,4 +1,3 @@
-using System.Linq;
 using AutoMapper;
 using Entities.Models;
 using Shared.DataTransferObjects.Cart;
@@ -12,8 +11,6 @@ public class MappingProfile : Profile
     public MappingProfile()
     {
         // ── Product ───────────────────────────────────────────────────────────
-        // Property-based records have init setters — AutoMapper maps by name
-        // automatically. Only custom/computed members need ForMember.
         CreateMap<Product, ProductResponseDto>();
 
         CreateMap<CreateProductRequestDto, Product>()
@@ -21,14 +18,11 @@ public class MappingProfile : Profile
             .ForMember(dest => dest.IsActive, opt => opt.MapFrom(_ => true))
             .ForMember(dest => dest.CreatedAt, opt => opt.Ignore());
 
-        // Null-safe partial update: only overwrite when the source value is not null
-        CreateMap<UpdateProductRequestDto, Product>()
-            .ForAllMembers(opts =>
-                opts.Condition((src, dest, srcMember) => srcMember != null));
+        // UpdateProductRequestDto → Product mapping is intentionally omitted.
+        // ProductService.UpdateProductAsync applies fields manually with HasValue
+        // guards so value-type defaults (0, false) never silently overwrite real data.
 
         // ── Cart ──────────────────────────────────────────────────────────────
-        // Computed members (ProductName, UnitPrice, Subtotal) don't exist on the
-        // entity so they must be mapped explicitly with ForMember.
         CreateMap<CartItem, CartItemResponseDto>()
             .ForMember(dest => dest.ProductName,
                 opt => opt.MapFrom(src => src.Product.Name))
