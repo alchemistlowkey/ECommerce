@@ -12,14 +12,16 @@ public record CreateProductRequestDto
     public string? Description { get; init; }
 
     [Required]
-    public decimal Price { get; init; } = 0;
+    [Range(0.01, double.MaxValue, ErrorMessage = "Price must be greater than 0")]
+    public decimal Price { get; init; }
 
     [Required]
-    public int Stock { get; init; } = 0;
+    [Range(0, int.MaxValue, ErrorMessage = "Stock cannot be negative")]
+    public int Stock { get; init; }
 
     [Required]
     [MaxLength(100)]
     public string? Category { get; init; }
 
     public string? ImageUrl { get; init; }
-};
+}

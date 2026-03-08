@@ -60,6 +60,9 @@ builder.Services.AddControllers()
     .AddApplicationPart(typeof(ECommerce.Presentation.AssemblyReference).Assembly)
     .AddJsonOptions(options =>
     {
+        // CamelCase policy ensures { "productId": ... } binds to ProductId on all record types.
+        options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+        options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
     });
 
