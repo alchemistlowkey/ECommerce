@@ -19,24 +19,24 @@ public class AuthService : IAuthService
     public AuthService(UserManager<User> userManager, IOptions<JwtConfiguration> jwtConfig)
     {
         _userManager = userManager;
-        _jwtConfig   = jwtConfig.Value;
+        _jwtConfig = jwtConfig.Value;
     }
 
     public async Task<AuthResponseDto> RegisterAsync(RegisterRequestDto request)
     {
-        var existing = await _userManager.FindByEmailAsync(request.Email);
+        var existing = await _userManager.FindByEmailAsync(request.Email!);
         if (existing is not null)
             throw new InvalidOperationException($"Email '{request.Email}' is already registered.");
 
         var user = new User
         {
-            UserName  = request.Email.ToLower().Trim(),
-            Email     = request.Email.ToLower().Trim(),
-            Role      = "Customer",
+            UserName = request.Email!.ToLower().Trim(),
+            Email = request.Email!.ToLower().Trim(),
+            Role = "Customer",
             CreatedAt = DateTime.UtcNow
         };
 
-        var result = await _userManager.CreateAsync(user, request.Password);
+        var result = await _userManager.CreateAsync(user, request.Password!);
         if (!result.Succeeded)
         {
             var errors = string.Join("; ", result.Errors.Select(e => e.Description));
@@ -49,9 +49,9 @@ public class AuthService : IAuthService
 
     public async Task<AuthResponseDto> LoginAsync(LoginRequestDto request)
     {
-        var user = await _userManager.FindByEmailAsync(request.Email);
+        var user = await _userManager.FindByEmailAsync(request.Email!);
 
-        if (user is null || !await _userManager.CheckPasswordAsync(user, request.Password))
+        if (user is null || !await _userManager.CheckPasswordAsync(user, request.Password!))
             throw new UnauthorizedAccessException("Invalid email or password.");
 
         var token = GenerateToken(user);
@@ -67,14 +67,14 @@ public class AuthService : IAuthService
             new Claim(ClaimTypes.Role, user.Role)
         };
 
-        var key         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtConfig.Secret));
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtConfig.Secret));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
         var token = new JwtSecurityToken(
-            issuer            : _jwtConfig.ValidIssuer,
-            audience          : _jwtConfig.ValidAudience,
-            claims            : claims,
-            expires           : DateTime.UtcNow.AddMinutes(_jwtConfig.Expires), // "expires": 5 = 5 minutes
+            issuer: _jwtConfig.ValidIssuer,
+            audience: _jwtConfig.ValidAudience,
+            claims: claims,
+            expires: DateTime.UtcNow.AddMinutes(_jwtConfig.Expires),
             signingCredentials: credentials
         );
 
