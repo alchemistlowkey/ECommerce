@@ -1,6 +1,7 @@
 using AutoMapper;
 using Contracts;
 using Entities.Models;
+using Microsoft.EntityFrameworkCore;
 using Service.Contracts;
 using Shared.DataTransferObjects.Cart;
 
@@ -35,9 +36,11 @@ public class CartService : ICartService
 
     public async Task<CartResponseDto> AddItemToCartAsync(string userId, AddToCartRequestDto request)
     {
+        var productId = request.ProductId!.Value;
+
         var product = await _repository.Product
-            .GetProductAsync(request.ProductId!.Value, trackChanges: false)
-            ?? throw new KeyNotFoundException($"Product with id '{request.ProductId!.Value}' was not found.");
+            .GetProductAsync(productId, trackChanges: false)
+            ?? throw new KeyNotFoundException($"Product '{productId}' was not found.");
 
         if (!product.IsActive)
             throw new InvalidOperationException("This product is no longer available.");
@@ -46,44 +49,63 @@ public class CartService : ICartService
             throw new InvalidOperationException(
                 $"Insufficient stock. Requested: {request.Quantity}, Available: {product.Stock}.");
 
+        // Always fetch with tracking so EF can persist changes
         var cart = await _repository.Cart
             .GetCartByUserIdAsync(userId, trackChanges: true);
 
         if (cart is null)
         {
+            // Build the cart and its first item together so EF inserts them
+            // in one round-trip with the FK relationship already satisfied.
             cart = new Cart
             {
                 Id = Guid.NewGuid(),
                 UserId = userId,
-                UpdatedAt = DateTime.UtcNow
+                UpdatedAt = DateTime.UtcNow,
+                Items = new List<CartItem>
+                {
+                    new CartItem
+                    {
+                        Id        = Guid.NewGuid(),
+                        ProductId = productId,
+                        Quantity  = request.Quantity
+                    }
+                }
             };
+
             _repository.Cart.CreateCart(cart);
-        }
-
-        var existingItem = cart.Items.FirstOrDefault(i => i.ProductId == request.ProductId!.Value);
-        if (existingItem is not null)
-        {
-            var newQuantity = existingItem.Quantity + request.Quantity;
-            if (product.Stock < newQuantity)
-                throw new InvalidOperationException(
-                    $"Insufficient stock. Requested total: {newQuantity}, Available: {product.Stock}.");
-
-            existingItem.Quantity = newQuantity;
+            await _repository.SaveAsync();
         }
         else
         {
-            cart.Items.Add(new CartItem
+            var existingItem = cart.Items
+                .FirstOrDefault(i => i.ProductId == productId);
+
+            if (existingItem is not null)
             {
-                Id = Guid.NewGuid(),
-                CartId = cart.Id,
-                ProductId = request.ProductId!.Value,
-                Quantity = request.Quantity
-            });
+                var newQty = existingItem.Quantity + request.Quantity;
+                if (product.Stock < newQty)
+                    throw new InvalidOperationException(
+                        $"Insufficient stock. Requested total: {newQty}, Available: {product.Stock}.");
+
+                existingItem.Quantity = newQty;
+            }
+            else
+            {
+                cart.Items.Add(new CartItem
+                {
+                    Id = Guid.NewGuid(),
+                    CartId = cart.Id,
+                    ProductId = productId,
+                    Quantity = request.Quantity
+                });
+            }
+
+            cart.UpdatedAt = DateTime.UtcNow;
+            await _repository.SaveAsync();
         }
 
-        cart.UpdatedAt = DateTime.UtcNow;
-        await _repository.SaveAsync();
-
+        // Re-fetch with includes so AutoMapper can resolve ProductName/UnitPrice
         var updated = await _repository.Cart
             .GetCartByUserIdAsync(userId, trackChanges: false);
 
@@ -98,7 +120,7 @@ public class CartService : ICartService
             ?? throw new KeyNotFoundException("Cart not found.");
 
         var item = cart.Items.FirstOrDefault(i => i.Id == itemId)
-            ?? throw new KeyNotFoundException($"Cart item with id '{itemId}' was not found.");
+            ?? throw new KeyNotFoundException($"Cart item '{itemId}' was not found.");
 
         if (request.Quantity == 0)
         {
@@ -133,7 +155,7 @@ public class CartService : ICartService
             ?? throw new KeyNotFoundException("Cart not found.");
 
         var item = cart.Items.FirstOrDefault(i => i.Id == itemId)
-            ?? throw new KeyNotFoundException($"Cart item with id '{itemId}' was not found.");
+            ?? throw new KeyNotFoundException($"Cart item '{itemId}' was not found.");
 
         cart.Items.Remove(item);
         cart.UpdatedAt = DateTime.UtcNow;
