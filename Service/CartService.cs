@@ -1,7 +1,6 @@
 using AutoMapper;
 using Contracts;
 using Entities.Models;
-using Microsoft.EntityFrameworkCore;
 using Service.Contracts;
 using Shared.DataTransferObjects.Cart;
 
@@ -15,10 +14,12 @@ public class CartService : ICartService
     public CartService(IRepositoryManager repository, IMapper mapper)
     {
         _repository = repository;
-        _mapper = mapper;
+        _mapper     = mapper;
     }
 
-    public async Task<CartResponseDto> GetCartAsync(string userId)
+    // ── helpers ──────────────────────────────────────────────────────────────
+
+    private async Task<CartResponseDto> ReadCartAsync(string userId)
     {
         var cart = await _repository.Cart
             .GetCartByUserIdAsync(userId, trackChanges: false);
@@ -26,7 +27,7 @@ public class CartService : ICartService
         if (cart is null)
             return new CartResponseDto
             {
-                Id = Guid.Empty,
+                Id    = Guid.Empty,
                 Items = new List<CartItemResponseDto>(),
                 Total = 0m
             };
@@ -34,7 +35,36 @@ public class CartService : ICartService
         return _mapper.Map<CartResponseDto>(cart);
     }
 
-    public async Task<CartResponseDto> AddItemToCartAsync(string userId, AddToCartRequestDto request)
+    // Ensure a Cart row exists for the user and return its Id.
+    // Uses a direct INSERT that is safe to call even if the row already exists
+    // because it checks first — no EF change tracker involved.
+    private async Task<Guid> EnsureCartAsync(string userId)
+    {
+        var existing = await _repository.Cart
+            .GetCartByUserIdAsync(userId, trackChanges: false);
+
+        if (existing is not null)
+            return existing.Id;
+
+        var cart = new Cart
+        {
+            Id        = Guid.NewGuid(),
+            UserId    = userId,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        _repository.Cart.CreateCart(cart);
+        await _repository.SaveAsync();
+        return cart.Id;
+    }
+
+    // ── public operations ────────────────────────────────────────────────────
+
+    public Task<CartResponseDto> GetCartAsync(string userId) =>
+        ReadCartAsync(userId);
+
+    public async Task<CartResponseDto> AddItemToCartAsync(
+        string userId, AddToCartRequestDto request)
     {
         var productId = request.ProductId!.Value;
 
@@ -49,74 +79,46 @@ public class CartService : ICartService
             throw new InvalidOperationException(
                 $"Insufficient stock. Requested: {request.Quantity}, Available: {product.Stock}.");
 
-        // Always fetch with tracking so EF can persist changes
-        var cart = await _repository.Cart
-            .GetCartByUserIdAsync(userId, trackChanges: true);
+        var cartId = await EnsureCartAsync(userId);
 
-        if (cart is null)
+        // Check if item already exists — read-only, no tracking
+        var freshCart = await _repository.Cart
+            .GetCartByUserIdAsync(userId, trackChanges: false);
+
+        var existing = freshCart?.Items
+            .FirstOrDefault(i => i.ProductId == productId);
+
+        if (existing is not null)
         {
-            // Build the cart and its first item together so EF inserts them
-            // in one round-trip with the FK relationship already satisfied.
-            cart = new Cart
-            {
-                Id = Guid.NewGuid(),
-                UserId = userId,
-                UpdatedAt = DateTime.UtcNow,
-                Items = new List<CartItem>
-                {
-                    new CartItem
-                    {
-                        Id        = Guid.NewGuid(),
-                        ProductId = productId,
-                        Quantity  = request.Quantity
-                    }
-                }
-            };
+            var newQty = existing.Quantity + request.Quantity;
+            if (product.Stock < newQty)
+                throw new InvalidOperationException(
+                    $"Insufficient stock. Requested total: {newQty}, Available: {product.Stock}.");
 
-            _repository.Cart.CreateCart(cart);
-            await _repository.SaveAsync();
+            // Direct SQL UPDATE — no change tracker, no concurrency token
+            await _repository.Cart.UpdateCartItemQuantityAsync(existing.Id, newQty);
         }
         else
         {
-            var existingItem = cart.Items
-                .FirstOrDefault(i => i.ProductId == productId);
-
-            if (existingItem is not null)
+            // Direct SQL INSERT — no change tracker
+            await _repository.Cart.AddCartItemDirectAsync(new CartItem
             {
-                var newQty = existingItem.Quantity + request.Quantity;
-                if (product.Stock < newQty)
-                    throw new InvalidOperationException(
-                        $"Insufficient stock. Requested total: {newQty}, Available: {product.Stock}.");
-
-                existingItem.Quantity = newQty;
-            }
-            else
-            {
-                cart.Items.Add(new CartItem
-                {
-                    Id = Guid.NewGuid(),
-                    CartId = cart.Id,
-                    ProductId = productId,
-                    Quantity = request.Quantity
-                });
-            }
-
-            cart.UpdatedAt = DateTime.UtcNow;
-            await _repository.SaveAsync();
+                Id        = Guid.NewGuid(),
+                CartId    = cartId,
+                ProductId = productId,
+                Quantity  = request.Quantity
+            });
         }
 
-        // Re-fetch with includes so AutoMapper can resolve ProductName/UnitPrice
-        var updated = await _repository.Cart
-            .GetCartByUserIdAsync(userId, trackChanges: false);
-
-        return _mapper.Map<CartResponseDto>(updated!);
+        await _repository.Cart.TouchCartAsync(cartId);
+        return await ReadCartAsync(userId);
     }
 
     public async Task<CartResponseDto> UpdateCartItemAsync(
         string userId, Guid itemId, UpdateCartItemRequestDto request)
     {
         var cart = await _repository.Cart
-            .GetCartByUserIdAsync(userId, trackChanges: true)
+            .GetCartByUserIdAsync(userId, trackChanges: false)
             ?? throw new KeyNotFoundException("Cart not found.");
 
         var item = cart.Items.FirstOrDefault(i => i.Id == itemId)
@@ -124,7 +126,7 @@ public class CartService : ICartService
 
         if (request.Quantity == 0)
         {
-            cart.Items.Remove(item);
+            await _repository.Cart.RemoveCartItemAsync(itemId);
         }
         else
         {
@@ -136,34 +138,24 @@ public class CartService : ICartService
                 throw new InvalidOperationException(
                     $"Insufficient stock. Requested: {request.Quantity}, Available: {product.Stock}.");
 
-            item.Quantity = request.Quantity;
+            await _repository.Cart.UpdateCartItemQuantityAsync(itemId, request.Quantity);
         }
 
-        cart.UpdatedAt = DateTime.UtcNow;
-        await _repository.SaveAsync();
-
-        var updated = await _repository.Cart
-            .GetCartByUserIdAsync(userId, trackChanges: false);
-
-        return _mapper.Map<CartResponseDto>(updated!);
+        await _repository.Cart.TouchCartAsync(cart.Id);
+        return await ReadCartAsync(userId);
     }
 
     public async Task<CartResponseDto> RemoveCartItemAsync(string userId, Guid itemId)
     {
         var cart = await _repository.Cart
-            .GetCartByUserIdAsync(userId, trackChanges: true)
+            .GetCartByUserIdAsync(userId, trackChanges: false)
             ?? throw new KeyNotFoundException("Cart not found.");
 
         var item = cart.Items.FirstOrDefault(i => i.Id == itemId)
             ?? throw new KeyNotFoundException($"Cart item '{itemId}' was not found.");
 
-        cart.Items.Remove(item);
-        cart.UpdatedAt = DateTime.UtcNow;
-        await _repository.SaveAsync();
-
-        var updated = await _repository.Cart
-            .GetCartByUserIdAsync(userId, trackChanges: false);
-
-        return _mapper.Map<CartResponseDto>(updated!);
+        await _repository.Cart.RemoveCartItemAsync(item.Id);
+        await _repository.Cart.TouchCartAsync(cart.Id);
+        return await ReadCartAsync(userId);
     }
 }

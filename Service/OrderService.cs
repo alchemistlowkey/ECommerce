@@ -18,21 +18,21 @@ public class OrderService : IOrderService
         IPaymentService payment)
     {
         _repository = repository;
-        _mapper = mapper;
-        _payment = payment;
+        _mapper     = mapper;
+        _payment    = payment;
     }
 
     public async Task<CheckoutResponseDto> CheckoutAsync(string userId)
     {
         var cart = await _repository.Cart
-            .GetCartByUserIdAsync(userId, trackChanges: true)
+            .GetCartByUserIdAsync(userId, trackChanges: false)
             ?? throw new InvalidOperationException("Your cart is empty.");
 
         if (!cart.Items.Any())
             throw new InvalidOperationException("Your cart is empty.");
 
         var orderItems = new List<OrderItem>();
-        decimal total = 0;
+        decimal total  = 0;
 
         foreach (var cartItem in cart.Items)
         {
@@ -51,25 +51,25 @@ public class OrderService : IOrderService
 
             orderItems.Add(new OrderItem
             {
-                Id = Guid.NewGuid(),
+                Id        = Guid.NewGuid(),
                 ProductId = product.Id,
-                Quantity = cartItem.Quantity,
+                Quantity  = cartItem.Quantity,
                 UnitPrice = product.Price
             });
 
             product.Stock -= cartItem.Quantity;
-            total += product.Price * cartItem.Quantity;
+            total         += product.Price * cartItem.Quantity;
         }
 
         var order = new Order
         {
-            Id = Guid.NewGuid(),
-            UserId = userId,
-            Items = orderItems,
-            TotalAmount = total,
-            Status = OrderStatus.PaymentProcessing,
+            Id              = Guid.NewGuid(),
+            UserId          = userId,
+            Items           = orderItems,
+            TotalAmount     = total,
+            Status          = OrderStatus.PaymentProcessing,
             PaymentProvider = _payment.ProviderName,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt       = DateTime.UtcNow
         };
 
         _repository.Order.CreateOrder(order);
@@ -85,16 +85,16 @@ public class OrderService : IOrderService
         else
             order.PaystackReference = result.PaymentReference;
 
-        cart.Items.Clear();
-        cart.UpdatedAt = DateTime.UtcNow;
-
+        // SaveAsync first to commit the order and stock changes,
+        // then delete the cart entirely via direct SQL (no change tracker).
         await _repository.SaveAsync();
+        await _repository.Cart.DeleteCartAsync(cart.Id);
 
         return new CheckoutResponseDto
         {
-            OrderId = order.Id,
-            PaymentData = result.PaymentData,
-            TotalAmount = total,
+            OrderId         = order.Id,
+            PaymentData     = result.PaymentData,
+            TotalAmount     = total,
             PaymentProvider = _payment.ProviderName
         };
     }
@@ -136,10 +136,10 @@ public class OrderService : IOrderService
 
         order.Status = eventType switch
         {
-            "payment_intent.succeeded" => OrderStatus.Paid,
+            "payment_intent.succeeded"      => OrderStatus.Paid,
             "payment_intent.payment_failed" => OrderStatus.Cancelled,
-            "payment_intent.canceled" => OrderStatus.Cancelled,
-            _ => order.Status
+            "payment_intent.canceled"       => OrderStatus.Cancelled,
+            _                               => order.Status
         };
 
         await _repository.SaveAsync();
@@ -162,10 +162,10 @@ public class OrderService : IOrderService
         // Paystack event types: https://paystack.com/docs/payments/webhooks/#events
         order.Status = eventType switch
         {
-            "charge.success" => OrderStatus.Paid,
-            "charge.failed" => OrderStatus.Cancelled,
-            "transfer.reversed" => OrderStatus.Cancelled,
-            _ => order.Status
+            "charge.success"        => OrderStatus.Paid,
+            "charge.failed"         => OrderStatus.Cancelled,
+            "transfer.reversed"     => OrderStatus.Cancelled,
+            _                       => order.Status
         };
 
         await _repository.SaveAsync();
