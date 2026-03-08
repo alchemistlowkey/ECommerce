@@ -1,4 +1,3 @@
-using System;
 using AutoMapper;
 using Contracts;
 using Entities.Models;
@@ -20,7 +19,8 @@ public class CartService : ICartService
 
     public async Task<CartResponseDto> GetCartAsync(string userId)
     {
-        var cart = await _repository.Cart.GetCartByUserIdAsync(userId, trackChanges: false);
+        var cart = await _repository.Cart
+            .GetCartByUserIdAsync(userId, trackChanges: false);
 
         if (cart is null)
             return new CartResponseDto
@@ -35,8 +35,9 @@ public class CartService : ICartService
 
     public async Task<CartResponseDto> AddItemToCartAsync(string userId, AddToCartRequestDto request)
     {
-        var product = await _repository.Product.GetProductAsync(request.ProductId, trackChanges: false)
-            ?? throw new KeyNotFoundException($"Product with id '{request.ProductId}' was not found.");
+        var product = await _repository.Product
+            .GetProductAsync(request.ProductId!.Value, trackChanges: false)
+            ?? throw new KeyNotFoundException($"Product with id '{request.ProductId!.Value}' was not found.");
 
         if (!product.IsActive)
             throw new InvalidOperationException("This product is no longer available.");
@@ -45,7 +46,8 @@ public class CartService : ICartService
             throw new InvalidOperationException(
                 $"Insufficient stock. Requested: {request.Quantity}, Available: {product.Stock}.");
 
-        var cart = await _repository.Cart.GetCartByUserIdAsync(userId, trackChanges: true);
+        var cart = await _repository.Cart
+            .GetCartByUserIdAsync(userId, trackChanges: true);
 
         if (cart is null)
         {
@@ -58,7 +60,7 @@ public class CartService : ICartService
             _repository.Cart.CreateCart(cart);
         }
 
-        var existingItem = cart.Items.FirstOrDefault(i => i.ProductId == request.ProductId);
+        var existingItem = cart.Items.FirstOrDefault(i => i.ProductId == request.ProductId!.Value);
         if (existingItem is not null)
         {
             var newQuantity = existingItem.Quantity + request.Quantity;
@@ -74,7 +76,7 @@ public class CartService : ICartService
             {
                 Id = Guid.NewGuid(),
                 CartId = cart.Id,
-                ProductId = request.ProductId,
+                ProductId = request.ProductId!.Value,
                 Quantity = request.Quantity
             });
         }
@@ -82,16 +84,17 @@ public class CartService : ICartService
         cart.UpdatedAt = DateTime.UtcNow;
         await _repository.SaveAsync();
 
-        var updated = await _repository.Cart.GetCartByUserIdAsync(userId, trackChanges: false);
+        var updated = await _repository.Cart
+            .GetCartByUserIdAsync(userId, trackChanges: false);
 
-        var cartDto = _mapper.Map<CartResponseDto>(updated!);
-
-        return cartDto;
+        return _mapper.Map<CartResponseDto>(updated!);
     }
 
-    public async Task<CartResponseDto> UpdateCartItemAsync(string userId, Guid itemId, UpdateCartItemRequestDto request)
+    public async Task<CartResponseDto> UpdateCartItemAsync(
+        string userId, Guid itemId, UpdateCartItemRequestDto request)
     {
-        var cart = await _repository.Cart.GetCartByUserIdAsync(userId, trackChanges: true)
+        var cart = await _repository.Cart
+            .GetCartByUserIdAsync(userId, trackChanges: true)
             ?? throw new KeyNotFoundException("Cart not found.");
 
         var item = cart.Items.FirstOrDefault(i => i.Id == itemId)
@@ -103,7 +106,8 @@ public class CartService : ICartService
         }
         else
         {
-            var product = await _repository.Product.GetProductAsync(item.ProductId, trackChanges: false)
+            var product = await _repository.Product
+                .GetProductAsync(item.ProductId, trackChanges: false)
                 ?? throw new KeyNotFoundException("Product not found.");
 
             if (product.Stock < request.Quantity)
@@ -116,16 +120,16 @@ public class CartService : ICartService
         cart.UpdatedAt = DateTime.UtcNow;
         await _repository.SaveAsync();
 
-        var updated = await _repository.Cart.GetCartByUserIdAsync(userId, trackChanges: false);
+        var updated = await _repository.Cart
+            .GetCartByUserIdAsync(userId, trackChanges: false);
 
-        var cartDto = _mapper.Map<CartResponseDto>(updated!);
-
-        return cartDto;
+        return _mapper.Map<CartResponseDto>(updated!);
     }
 
     public async Task<CartResponseDto> RemoveCartItemAsync(string userId, Guid itemId)
     {
-        var cart = await _repository.Cart.GetCartByUserIdAsync(userId, trackChanges: true)
+        var cart = await _repository.Cart
+            .GetCartByUserIdAsync(userId, trackChanges: true)
             ?? throw new KeyNotFoundException("Cart not found.");
 
         var item = cart.Items.FirstOrDefault(i => i.Id == itemId)
@@ -135,10 +139,9 @@ public class CartService : ICartService
         cart.UpdatedAt = DateTime.UtcNow;
         await _repository.SaveAsync();
 
-        var updated = await _repository.Cart.GetCartByUserIdAsync(userId, trackChanges: false);
+        var updated = await _repository.Cart
+            .GetCartByUserIdAsync(userId, trackChanges: false);
 
-        var cartDto = _mapper.Map<CartResponseDto>(updated!);
-
-        return cartDto;
+        return _mapper.Map<CartResponseDto>(updated!);
     }
 }
