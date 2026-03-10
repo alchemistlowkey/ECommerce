@@ -26,6 +26,10 @@ public class MappingProfile : Profile
         CreateMap<CartItem, CartItemResponseDto>()
             .ForMember(dest => dest.ProductName,
                 opt => opt.MapFrom(src => src.Product.Name))
+            .ForMember(dest => dest.ImageUrl,
+                opt => opt.MapFrom(src => src.Product.ImageUrl ?? string.Empty))
+            .ForMember(dest => dest.Category,
+                opt => opt.MapFrom(src => src.Product.Category ?? string.Empty))
             .ForMember(dest => dest.UnitPrice,
                 opt => opt.MapFrom(src => src.Product.Price))
             .ForMember(dest => dest.Subtotal,
