@@ -36,18 +36,13 @@ public static class ServiceExtensions
 
     public static void ConfigurePaymentService(this IServiceCollection services, IConfiguration configuration)
     {
-        // Register HttpClient for Paystack (no-op cost if Stripe is selected)
         services.AddHttpClient("Paystack");
 
-        var provider = configuration["PaymentProvider"] ?? "Stripe";
-
-        // The active provider is registered as IPaymentService.
-        // To switch providers: change "PaymentProvider" in appsettings.json.
-        // No code changes required.
-        if (provider.Equals("Paystack", StringComparison.OrdinalIgnoreCase))
-            services.AddScoped<IPaymentService, PaystackPaymentService>();
-        else
-            services.AddScoped<IPaymentService, StripePaymentService>();
+        // Register BOTH providers as concrete scoped types.
+        // OrderService resolves the correct one at runtime based on the
+        // user's checkout selection — no config switch needed.
+        services.AddScoped<StripePaymentService>();
+        services.AddScoped<PaystackPaymentService>();
     }
 
     public static void ConfigurePostgreSqlContext(this IServiceCollection services, IConfiguration configuration) =>
@@ -74,14 +69,10 @@ public static class ServiceExtensions
         var jwtSection = configuration.GetSection("JwtSettings");
         services.Configure<JwtConfiguration>(jwtSection);
 
-        // Read values directly from IConfiguration — never depends on Get<T>()
-        // which silently returns null properties when a key is absent, causing a
-        // cryptic ArgumentNullException inside the JWT middleware on the first request.
         var secret = jwtSection["Secret"];
         var issuer = jwtSection["validIssuer"];
         var audience = jwtSection["validAudience"];
 
-        // Fail at startup with a clear message rather than at request time.
         if (string.IsNullOrWhiteSpace(secret))
             throw new InvalidOperationException(
                 "JWT Secret is missing. Set 'JwtSettings:Secret' in appsettings.json.");
@@ -122,7 +113,4 @@ public static class ServiceExtensions
     public static void ConfigurePaystack(
         this IServiceCollection services, IConfiguration configuration) =>
         services.Configure<PaystackSettings>(configuration.GetSection("Paystack"));
-
-
 }
-
