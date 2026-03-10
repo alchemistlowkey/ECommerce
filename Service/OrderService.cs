@@ -1,6 +1,7 @@
 using AutoMapper;
 using Contracts;
 using Entities.Models;
+using Microsoft.Extensions.DependencyInjection;
 using Service.Contracts;
 using Shared.DataTransferObjects.Order;
 
@@ -10,19 +11,26 @@ public class OrderService : IOrderService
 {
     private readonly IRepositoryManager _repository;
     private readonly IMapper _mapper;
-    private readonly IPaymentService _payment;
+    private readonly IServiceProvider _services;
 
     public OrderService(
         IRepositoryManager repository,
         IMapper mapper,
-        IPaymentService payment)
+        IServiceProvider services)
     {
         _repository = repository;
-        _mapper     = mapper;
-        _payment    = payment;
+        _mapper = mapper;
+        _services = services;
     }
 
-    public async Task<CheckoutResponseDto> CheckoutAsync(string userId)
+    // Resolve the correct payment provider at runtime based on the user's choice.
+    // Both are registered as concrete scoped types in ServiceExtensions.
+    private IPaymentService GetPaymentService(string provider) =>
+        provider.Equals("Paystack", StringComparison.OrdinalIgnoreCase)
+            ? _services.GetRequiredService<PaystackPaymentService>()
+            : _services.GetRequiredService<StripePaymentService>();
+
+    public async Task<CheckoutResponseDto> CheckoutAsync(string userId, string paymentProvider)
     {
         var cart = await _repository.Cart
             .GetCartByUserIdAsync(userId, trackChanges: false)
@@ -32,7 +40,7 @@ public class OrderService : IOrderService
             throw new InvalidOperationException("Your cart is empty.");
 
         var orderItems = new List<OrderItem>();
-        decimal total  = 0;
+        decimal total = 0;
 
         foreach (var cartItem in cart.Items)
         {
@@ -41,8 +49,7 @@ public class OrderService : IOrderService
                 ?? throw new KeyNotFoundException($"Product '{cartItem.ProductId}' was not found.");
 
             if (!product.IsActive)
-                throw new InvalidOperationException(
-                    $"Product '{product.Name}' is no longer available.");
+                throw new InvalidOperationException($"Product '{product.Name}' is no longer available.");
 
             if (product.Stock < cartItem.Quantity)
                 throw new InvalidOperationException(
@@ -51,51 +58,47 @@ public class OrderService : IOrderService
 
             orderItems.Add(new OrderItem
             {
-                Id        = Guid.NewGuid(),
+                Id = Guid.NewGuid(),
                 ProductId = product.Id,
-                Quantity  = cartItem.Quantity,
+                Quantity = cartItem.Quantity,
                 UnitPrice = product.Price
             });
 
             product.Stock -= cartItem.Quantity;
-            total         += product.Price * cartItem.Quantity;
+            total += product.Price * cartItem.Quantity;
         }
+
+        var payment = GetPaymentService(paymentProvider);
 
         var order = new Order
         {
-            Id              = Guid.NewGuid(),
-            UserId          = userId,
-            Items           = orderItems,
-            TotalAmount     = total,
-            Status          = OrderStatus.PaymentProcessing,
-            PaymentProvider = _payment.ProviderName,
-            CreatedAt       = DateTime.UtcNow
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            Items = orderItems,
+            TotalAmount = total,
+            Status = OrderStatus.PaymentProcessing,
+            PaymentProvider = payment.ProviderName,
+            CreatedAt = DateTime.UtcNow
         };
 
         _repository.Order.CreateOrder(order);
 
-        // PaymentResult is provider-agnostic:
-        //   Stripe  → PaymentData = clientSecret,       PaymentReference = pi_xxx
-        //   Paystack → PaymentData = authorization_url, PaymentReference = trx reference
-        var result = await _payment.CreatePaymentIntentAsync(total, "usd", order.Id);
+        var result = await payment.CreatePaymentIntentAsync(total, "usd", order.Id);
 
-        // Store the provider-specific reference for webhook reconciliation
-        if (_payment.ProviderName == "Stripe")
+        if (payment.ProviderName.Equals("Stripe", StringComparison.OrdinalIgnoreCase))
             order.StripePaymentIntentId = result.PaymentReference;
         else
             order.PaystackReference = result.PaymentReference;
 
-        // SaveAsync first to commit the order and stock changes,
-        // then delete the cart entirely via direct SQL (no change tracker).
         await _repository.SaveAsync();
         await _repository.Cart.DeleteCartAsync(cart.Id);
 
         return new CheckoutResponseDto
         {
-            OrderId         = order.Id,
-            PaymentData     = result.PaymentData,
-            TotalAmount     = total,
-            PaymentProvider = _payment.ProviderName
+            OrderId = order.Id,
+            PaymentData = result.PaymentData,
+            TotalAmount = total,
+            PaymentProvider = payment.ProviderName   // "Stripe" or "Paystack"
         };
     }
 
@@ -103,7 +106,6 @@ public class OrderService : IOrderService
     {
         var orders = await _repository.Order
             .GetOrdersByUserIdAsync(userId, trackChanges: false);
-
         return _mapper.Map<IEnumerable<OrderResponseDto>>(orders);
     }
 
@@ -114,17 +116,16 @@ public class OrderService : IOrderService
             ?? throw new KeyNotFoundException($"Order with id '{orderId}' was not found.");
 
         if (order.UserId != userId)
-            throw new UnauthorizedAccessException(
-                "You are not authorized to view this order.");
+            throw new UnauthorizedAccessException("You are not authorized to view this order.");
 
         return _mapper.Map<OrderResponseDto>(order);
     }
 
     public async Task HandleStripeWebhookAsync(string payload, string stripeSignature)
     {
-        var isValid = _payment.ValidateWebhookSignature(
-            payload, stripeSignature,
-            out var eventType, out var paymentReference);
+        var stripe = _services.GetRequiredService<StripePaymentService>();
+        var isValid = stripe.ValidateWebhookSignature(
+            payload, stripeSignature, out var eventType, out var paymentReference);
 
         if (!isValid)
             throw new UnauthorizedAccessException("Invalid Stripe webhook signature.");
@@ -136,10 +137,10 @@ public class OrderService : IOrderService
 
         order.Status = eventType switch
         {
-            "payment_intent.succeeded"      => OrderStatus.Paid,
+            "payment_intent.succeeded" => OrderStatus.Paid,
             "payment_intent.payment_failed" => OrderStatus.Cancelled,
-            "payment_intent.canceled"       => OrderStatus.Cancelled,
-            _                               => order.Status
+            "payment_intent.canceled" => OrderStatus.Cancelled,
+            _ => order.Status
         };
 
         await _repository.SaveAsync();
@@ -147,9 +148,9 @@ public class OrderService : IOrderService
 
     public async Task HandlePaystackWebhookAsync(string payload, string paystackSignature)
     {
-        var isValid = _payment.ValidateWebhookSignature(
-            payload, paystackSignature,
-            out var eventType, out var paymentReference);
+        var paystack = _services.GetRequiredService<PaystackPaymentService>();
+        var isValid = paystack.ValidateWebhookSignature(
+            payload, paystackSignature, out var eventType, out var paymentReference);
 
         if (!isValid)
             throw new UnauthorizedAccessException("Invalid Paystack webhook signature.");
@@ -159,13 +160,12 @@ public class OrderService : IOrderService
 
         if (order is null) return;
 
-        // Paystack event types: https://paystack.com/docs/payments/webhooks/#events
         order.Status = eventType switch
         {
-            "charge.success"        => OrderStatus.Paid,
-            "charge.failed"         => OrderStatus.Cancelled,
-            "transfer.reversed"     => OrderStatus.Cancelled,
-            _                       => order.Status
+            "charge.success" => OrderStatus.Paid,
+            "charge.failed" => OrderStatus.Cancelled,
+            "transfer.reversed" => OrderStatus.Cancelled,
+            _ => order.Status
         };
 
         await _repository.SaveAsync();
