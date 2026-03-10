@@ -30,9 +30,9 @@ namespace ECommerce.Presentation.Controllers
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
-        public async Task<IActionResult> Checkout()
+        public async Task<IActionResult> Checkout([FromBody] CheckoutRequestDto request)
         {
-            var response = await _service.Order.CheckoutAsync(CurrentUserId);
+            var response = await _service.Order.CheckoutAsync(CurrentUserId, request.PaymentProvider);
             return Ok(response);
         }
 
