@@ -23,7 +23,16 @@ public class FlutterwavePaymentService : IPaymentService
         _settings = settings.Value;
         _http = httpClientFactory.CreateClient("Flutterwave");
 
-        _http.BaseAddress = new Uri(_settings.BaseUrl);
+        // Flutterwave expects all API calls to be made against the /v3 endpoint.
+        // If the configuration is missing the suffix, append it so developers
+        // don’t accidentally point to a non-existent endpoint and get 404s.
+        var baseUrl = (_settings.BaseUrl ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(baseUrl))
+            baseUrl = "https://api.flutterwave.com/v3";
+        else if (!baseUrl.EndsWith("/v3", StringComparison.OrdinalIgnoreCase))
+            baseUrl = baseUrl.TrimEnd('/') + "/v3";
+
+        _http.BaseAddress = new Uri(baseUrl);
         _http.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", _settings.SecretKey);
         _http.DefaultRequestHeaders.Accept
