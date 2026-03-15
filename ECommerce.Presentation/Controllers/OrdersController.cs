@@ -21,9 +21,8 @@ namespace ECommerce.Presentation.Controllers
                 ?? throw new UnauthorizedAccessException("User Identity not found.");
 
         /// <summary>
-        /// Checkout: converts the current cart into an order and creates a payment authorization.
-        /// Returns an authorization URL (Paystack/Flutterwave) to complete payment.
-        /// The PaymentProvider field in the response tells the frontend which flow to use.
+        /// Checkout: converts the current cart into an order and creates a payment
+        /// authorization URL. Returns the provider's hosted payment page URL.
         /// </summary>
         [HttpPost("checkout")]
         [ProducesResponseType(typeof(CheckoutResponseDto), StatusCodes.Status200OK)]
@@ -39,7 +38,7 @@ namespace ECommerce.Presentation.Controllers
         /// <summary>
         /// Verify payment status for an order by actively querying the payment provider.
         /// Called by the frontend immediately after the user returns from the payment page
-        /// to update the order status without waiting for a webhook.
+        /// so the order status is updated without waiting for a webhook.
         /// </summary>
         [HttpPost("{id:guid}/verify-payment")]
         [ProducesResponseType(typeof(OrderResponseDto), StatusCodes.Status200OK)]
@@ -69,48 +68,6 @@ namespace ECommerce.Presentation.Controllers
         {
             var order = await _service.Order.GetOrderAsync(CurrentUserId, id);
             return Ok(order);
-        }
-
-        /// <summary>
-        /// Flutterwave webhook endpoint. Called by Flutterwave after payment events.
-        /// Must be excluded from JWT auth — Flutterwave authenticates via the verif-hash header.
-        /// </summary>
-        [HttpPost("webhook/flutterwave")]
-        [AllowAnonymous]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> FlutterwaveWebhook()
-        {
-            var payload = await new StreamReader(Request.Body).ReadToEndAsync();
-            var signature = Request.Headers["verif-hash"].ToString();
-
-            if (string.IsNullOrWhiteSpace(signature))
-                return BadRequest("Missing verif-hash header.");
-
-            await _service.Order.HandleFlutterwaveWebhookAsync(payload, signature);
-            return Ok();
-        }
-
-        /// <summary>
-        /// Paystack webhook — receives payment events from Paystack.
-        /// Paystack authenticates via HMAC-SHA512 in the x-paystack-signature header.
-        /// </summary>
-        [HttpPost("webhook/paystack")]
-        [AllowAnonymous]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> PaystackWebhook()
-        {
-            var payload = await new StreamReader(Request.Body).ReadToEndAsync();
-            var signature = Request.Headers["x-paystack-signature"].ToString();
-
-            if (string.IsNullOrWhiteSpace(signature))
-                return BadRequest("Missing x-paystack-signature header.");
-
-            await _service.Order.HandlePaystackWebhookAsync(payload, signature);
-
-            // Paystack requires a 200 response within 5 seconds or it will retry.
-            return Ok();
         }
     }
 }
