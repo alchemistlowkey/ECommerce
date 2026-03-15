@@ -22,7 +22,7 @@
         <member name="M:ECommerce.Presentation.Controllers.CartController.RemoveItem(System.Guid)">
             <summary>Remove a specific item from the cart.</summary>
         </member>
-        <member name="M:ECommerce.Presentation.Controllers.OrdersController.Checkout">
+        <member name="M:ECommerce.Presentation.Controllers.OrdersController.Checkout(Shared.DataTransferObjects.Order.CheckoutRequestDto)">
             <summary>
             Checkout: converts the current cart into an order and creates a Stripe PaymentIntent.
             Returns a clientSecret for stripe, authorization_url for Paystack, to complete payment.
