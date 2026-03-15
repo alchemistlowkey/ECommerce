@@ -26,7 +26,7 @@ public class FlutterwavePaymentService : IPaymentService
         _http.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", _settings.SecretKey);
         _http.DefaultRequestHeaders.Accept
-            .Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+            .Add(new MediaTypeWithQualityHeaderValue("application/json"));
     }
 
     public async Task<PaymentResult> CreatePaymentIntentAsync(
@@ -37,16 +37,17 @@ public class FlutterwavePaymentService : IPaymentService
                 $"Payment amount must be greater than zero. Got: {amount:C}.");
 
         if (string.IsNullOrWhiteSpace(customerEmail))
-            throw new InvalidOperationException("Customer email is required for Flutterwave.");
+            throw new InvalidOperationException("Customer email is required for Flutterwave payment initialization.");
 
-        // Flutterwave expects the FULL amount (not kobo) — it takes the amount as-is in the currency's major unit
+        // Flutterwave accepts the FULL amount in the currency's major unit (e.g. 5000.00 NGN),
+        // unlike Paystack which wants kobo. Do NOT multiply by 100.
         var txRef = $"order_{orderId:N}";
 
         var payload = new
         {
             tx_ref = txRef,
-            amount = Math.Round(amount, 2),  // Full amount e.g. 5000.00 NGN
-            currency = currency.ToUpper(),
+            amount = Math.Round(amount, 2),
+            currency = currency.ToUpper(),   // NGN, USD, GHS, etc.
             redirect_url = _settings.RedirectUrl,
             customer = new { email = customerEmail },
             meta = new { order_id = orderId.ToString() }
@@ -55,7 +56,7 @@ public class FlutterwavePaymentService : IPaymentService
         var json = JsonSerializer.Serialize(payload);
         var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-        // Correct Flutterwave endpoint: POST /payments
+        // Correct Flutterwave endpoint: POST /v3/payments  (NOT /transaction/initialize)
         var response = await _http.PostAsync("/payments", content);
         var body = await response.Content.ReadAsStringAsync();
 
@@ -71,8 +72,8 @@ public class FlutterwavePaymentService : IPaymentService
             throw new InvalidOperationException($"Flutterwave error: {result.Message}");
 
         return new PaymentResult(
-            PaymentData: result.Data.Link,   // redirect URL
-            PaymentReference: txRef          // store tx_ref on Order for webhook matching
+            PaymentData: result.Data.Link,   // redirect the user to this URL
+            PaymentReference: txRef          // store tx_ref on Order for later verification
         );
     }
 
@@ -87,8 +88,8 @@ public class FlutterwavePaymentService : IPaymentService
 
         try
         {
-            // Flutterwave sends verif-hash as a PLAIN SECRET STRING (not HMAC)
-            // Just compare the header value directly to your WebhookSecret
+            // Flutterwave does NOT use HMAC. It sends your WebhookSecret as a plain string
+            // in the "verif-hash" header. Simply compare it directly.
             if (!signature.Equals(_settings.WebhookSecret, StringComparison.Ordinal))
                 return false;
 
@@ -99,7 +100,7 @@ public class FlutterwavePaymentService : IPaymentService
                 ? evt.GetString() ?? string.Empty
                 : string.Empty;
 
-            // Flutterwave sends tx_ref (our reference) in data.tx_ref
+            // Flutterwave sends our tx_ref in data.tx_ref
             paymentReference = root
                 .TryGetProperty("data", out var data) &&
                 data.TryGetProperty("tx_ref", out var refProp)
@@ -114,11 +115,16 @@ public class FlutterwavePaymentService : IPaymentService
         }
     }
 
-    // ── Verify a transaction directly with the Flutterwave API ───────────────
+    /// <summary>
+    /// Actively verifies a transaction with the Flutterwave API using the tx_ref.
+    /// Called after the user is redirected back to confirm the payment succeeded.
+    /// </summary>
     public async Task<bool> VerifyTransactionAsync(string txRef)
     {
-        // GET /transactions/verify_by_reference?tx_ref={txRef}
-        var response = await _http.GetAsync($"/transactions/verify_by_reference?tx_ref={txRef}");
+        if (string.IsNullOrWhiteSpace(txRef)) return false;
+
+        // GET /v3/transactions/verify_by_reference?tx_ref={txRef}
+        var response = await _http.GetAsync($"/transactions/verify_by_reference?tx_ref={Uri.EscapeDataString(txRef)}");
         var body = await response.Content.ReadAsStringAsync();
 
         if (!response.IsSuccessStatusCode) return false;
@@ -126,8 +132,12 @@ public class FlutterwavePaymentService : IPaymentService
         var result = JsonSerializer.Deserialize<FlutterwaveVerifyResponse>(body,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
-        return result?.Status == "success" && result.Data?.Status == "successful";
+        // status == "success" at root level AND data.status == "successful"
+        return result?.Status == "success" &&
+               string.Equals(result.Data?.Status, "successful", StringComparison.OrdinalIgnoreCase);
     }
+
+    // ── Private response models ──────────────────────────────────────────────
 
     private record FlutterwaveInitializeResponse(
         string Status,
@@ -146,6 +156,6 @@ public class FlutterwavePaymentService : IPaymentService
     );
 
     private record FlutterwaveVerifyData(
-        string Status  // "successful", "failed", "pending"
+        [property: JsonPropertyName("status")] string Status  // "successful" | "failed" | "pending"
     );
 }

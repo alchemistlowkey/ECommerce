@@ -25,8 +25,8 @@ public class OrderService : IOrderService
 
     // Resolve the correct payment provider at runtime based on the user's choice.
     // Both are registered as concrete scoped types in ServiceExtensions.
-    private IPaymentService GetPaymentService(string provider) =>
-        provider.Equals("Flutterwave", StringComparison.OrdinalIgnoreCase)
+    private IPaymentService GetPaymentService(string? provider) =>
+        (provider ?? string.Empty).Equals("Flutterwave", StringComparison.OrdinalIgnoreCase)
             ? _services.GetRequiredService<FlutterwavePaymentService>()
             : _services.GetRequiredService<PaystackPaymentService>();
 
@@ -70,7 +70,6 @@ public class OrderService : IOrderService
 
         var payment = GetPaymentService(paymentProvider);
 
-        // Fetch the user's email for Paystack, which requires it for initialization.
         var user = await _repository.User.GetUserByIdAsync(userId, trackChanges: false)
             ?? throw new KeyNotFoundException("User not found.");
 
@@ -87,14 +86,14 @@ public class OrderService : IOrderService
 
         _repository.Order.CreateOrder(order);
 
-        // Paystack/Flutterwave only support NGN in this integration.
         var result = await payment.CreatePaymentIntentAsync(
             total,
             "NGN",
             order.Id,
             user.Email);
 
-        // Store the provider transaction reference so we can match webhook callbacks.
+        // Store the provider transaction reference so we can match webhook callbacks
+        // and direct verification calls later.
         order.PaystackReference = result.PaymentReference;
 
         await _repository.SaveAsync();
@@ -105,7 +104,7 @@ public class OrderService : IOrderService
             OrderId = order.Id,
             PaymentData = result.PaymentData,
             TotalAmount = total,
-            PaymentProvider = payment.ProviderName   // "Paystack" or "Flutterwave"
+            PaymentProvider = payment.ProviderName
         };
     }
 
@@ -128,6 +127,42 @@ public class OrderService : IOrderService
         return _mapper.Map<OrderResponseDto>(order);
     }
 
+    /// <summary>
+    /// Actively verifies a transaction with the payment provider and updates the
+    /// order status to Paid (or Cancelled). Called from the frontend after the
+    /// user is redirected back from the payment page — this ensures the status
+    /// is updated immediately without relying solely on the webhook.
+    /// </summary>
+    public async Task<OrderResponseDto> VerifyPaymentAsync(string userId, Guid orderId)
+    {
+        var order = await _repository.Order.GetOrderAsync(orderId, trackChanges: true)
+            ?? throw new KeyNotFoundException($"Order '{orderId}' not found.");
+
+        if (order.UserId != userId)
+            throw new UnauthorizedAccessException("You are not authorized to access this order.");
+
+        // If the order is already in a terminal state, just return it as-is.
+        if (order.Status == OrderStatus.Paid ||
+            order.Status == OrderStatus.Shipped ||
+            order.Status == OrderStatus.Delivered ||
+            order.Status == OrderStatus.Cancelled)
+        {
+            return _mapper.Map<OrderResponseDto>(order);
+        }
+
+        // Actively call the provider to verify the transaction.
+        if (!string.IsNullOrEmpty(order.PaystackReference))
+        {
+            var payment = GetPaymentService(order.PaymentProvider);
+            var verified = await payment.VerifyTransactionAsync(order.PaystackReference);
+
+            order.Status = verified ? OrderStatus.Paid : order.Status;
+            await _repository.SaveAsync();
+        }
+
+        return _mapper.Map<OrderResponseDto>(order);
+    }
+
     public async Task HandleFlutterwaveWebhookAsync(string payload, string flutterwaveSignature)
     {
         var flutterwave = _services.GetRequiredService<FlutterwavePaymentService>();
@@ -142,6 +177,9 @@ public class OrderService : IOrderService
 
         if (order is null) return;
 
+        // Flutterwave webhook event names:
+        // "charge.completed" — payment succeeded
+        // "charge.failed"    — payment failed
         order.Status = eventType switch
         {
             "charge.completed" => OrderStatus.Paid,
@@ -166,6 +204,10 @@ public class OrderService : IOrderService
 
         if (order is null) return;
 
+        // Paystack webhook event names:
+        // "charge.success"      — payment succeeded
+        // "charge.failed"       — payment failed
+        // "transfer.reversed"   — refund/reversal
         order.Status = eventType switch
         {
             "charge.success" => OrderStatus.Paid,
@@ -175,33 +217,5 @@ public class OrderService : IOrderService
         };
 
         await _repository.SaveAsync();
-    }
-
-    public async Task<OrderResponseDto> VerifyPaymentAsync(string userId, Guid orderId)
-    {
-        var order = await _repository.Order.GetOrderAsync(orderId, trackChanges: true)
-            ?? throw new KeyNotFoundException($"Order '{orderId}' not found.");
-
-        if (order.UserId != userId)
-            throw new UnauthorizedAccessException("You are not authorized to access this order.");
-
-        // Already confirmed — return as-is
-        if (order.Status == OrderStatus.Paid || order.Status == OrderStatus.Cancelled)
-            return _mapper.Map<OrderResponseDto>(order);
-
-        // Actively verify with the payment provider
-        if (!string.IsNullOrEmpty(order.PaystackReference))
-        {
-            var payment = GetPaymentService(order.PaymentProvider ?? "Paystack");
-            var verified = await payment.VerifyTransactionAsync(order.PaystackReference);
-
-            if (verified)
-            {
-                order.Status = OrderStatus.Paid;
-                await _repository.SaveAsync();
-            }
-        }
-
-        return _mapper.Map<OrderResponseDto>(order);
     }
 }

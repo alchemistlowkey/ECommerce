@@ -40,18 +40,16 @@ public class PaystackPaymentService : IPaymentService
         if (string.IsNullOrWhiteSpace(customerEmail))
             throw new InvalidOperationException("Customer email is required for Paystack payment initialization.");
 
-        // Paystack expects amount in kobo (NGN smallest unit) or cents.
-        // Multiply by 100 the same way Stripe does — works for NGN, GHS, ZAR, USD.
+        // Paystack expects amount in kobo (NGN smallest unit) — multiply by 100.
         var amountInKobo = (long)Math.Round(amount * 100, MidpointRounding.AwayFromZero);
 
-        // Unique reference for this transaction — use orderId for easy reconciliation
         var reference = $"order_{orderId:N}";
 
         var payload = new
         {
             email = customerEmail,
             amount = amountInKobo,
-            currency = currency.ToUpper(),   // Paystack uses uppercase: NGN, USD, GHS
+            currency = currency.ToUpper(),
             reference = reference,
             metadata = new { order_id = orderId.ToString() }
         };
@@ -71,12 +69,11 @@ public class PaystackPaymentService : IPaymentService
             ?? throw new InvalidOperationException("Empty response from Paystack.");
 
         if (!result.Status)
-            throw new InvalidOperationException(
-                $"Paystack error: {result.Message}");
+            throw new InvalidOperationException($"Paystack error: {result.Message}");
 
         return new PaymentResult(
-            PaymentData: result.Data.AuthorizationUrl,  // redirect user here
-            PaymentReference: result.Data.Reference          // store on Order
+            PaymentData: result.Data.AuthorizationUrl,
+            PaymentReference: result.Data.Reference
         );
     }
 
@@ -91,8 +88,7 @@ public class PaystackPaymentService : IPaymentService
 
         try
         {
-            // Paystack signs with HMAC-SHA512 using the secret key as the key.
-            // The header sent is "x-paystack-signature".
+            // Paystack signs with HMAC-SHA512 using the secret key.
             var keyBytes = Encoding.UTF8.GetBytes(_settings.WebhookSecret);
             var payloadBytes = Encoding.UTF8.GetBytes(payload);
 
@@ -102,7 +98,6 @@ public class PaystackPaymentService : IPaymentService
             if (!expectedHash.Equals(signature, StringComparison.OrdinalIgnoreCase))
                 return false;
 
-            // Parse the event to extract type and reference
             using var doc = JsonDocument.Parse(payload);
             var root = doc.RootElement;
 
@@ -110,7 +105,6 @@ public class PaystackPaymentService : IPaymentService
                 ? evt.GetString() ?? string.Empty
                 : string.Empty;
 
-            // Paystack reference is nested at data.reference
             paymentReference = root
                 .TryGetProperty("data", out var data) &&
                 data.TryGetProperty("reference", out var refProp)
@@ -125,9 +119,16 @@ public class PaystackPaymentService : IPaymentService
         }
     }
 
+    /// <summary>
+    /// Actively verifies a transaction with the Paystack API using the reference.
+    /// Called after the user is redirected back to confirm the payment succeeded.
+    /// </summary>
     public async Task<bool> VerifyTransactionAsync(string reference)
     {
-        var response = await _http.GetAsync($"/transaction/verify/{reference}");
+        if (string.IsNullOrWhiteSpace(reference)) return false;
+
+        // GET /transaction/verify/{reference}
+        var response = await _http.GetAsync($"/transaction/verify/{Uri.EscapeDataString(reference)}");
         var body = await response.Content.ReadAsStringAsync();
 
         if (!response.IsSuccessStatusCode) return false;
@@ -135,13 +136,12 @@ public class PaystackPaymentService : IPaymentService
         var result = JsonSerializer.Deserialize<PaystackVerifyResponse>(body,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
-        return result?.Status == true && result.Data?.Status == "success";
+        // Paystack returns status:true at root and data.status:"success" when paid
+        return result?.Status == true &&
+               string.Equals(result.Data?.Status, "success", StringComparison.OrdinalIgnoreCase);
     }
 
-    private record PaystackVerifyResponse(bool Status, string Message, PaystackVerifyData? Data);
-    private record PaystackVerifyData(string Status);
-
-    // ── Response models for Paystack API deserialization ─────────────────────
+    // ── Private response models ──────────────────────────────────────────────
 
     private record PaystackInitializeResponse(
         bool Status,
@@ -153,5 +153,15 @@ public class PaystackPaymentService : IPaymentService
         [property: JsonPropertyName("authorization_url")] string AuthorizationUrl,
         [property: JsonPropertyName("access_code")] string AccessCode,
         [property: JsonPropertyName("reference")] string Reference
+    );
+
+    private record PaystackVerifyResponse(
+        bool Status,
+        string Message,
+        PaystackVerifyData? Data
+    );
+
+    private record PaystackVerifyData(
+        [property: JsonPropertyName("status")] string Status  // "success" | "failed" | "abandoned"
     );
 }

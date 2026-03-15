@@ -36,6 +36,21 @@ namespace ECommerce.Presentation.Controllers
             return Ok(response);
         }
 
+        /// <summary>
+        /// Verify payment status for an order by actively querying the payment provider.
+        /// Called by the frontend immediately after the user returns from the payment page
+        /// to update the order status without waiting for a webhook.
+        /// </summary>
+        [HttpPost("{id:guid}/verify-payment")]
+        [ProducesResponseType(typeof(OrderResponseDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<IActionResult> VerifyPayment(Guid id)
+        {
+            var order = await _service.Order.VerifyPaymentAsync(CurrentUserId, id);
+            return Ok(order);
+        }
+
         /// <summary>Get all orders for the current user.</summary>
         [HttpGet]
         [ProducesResponseType(typeof(IEnumerable<OrderResponseDto>), StatusCodes.Status200OK)]
@@ -96,17 +111,6 @@ namespace ECommerce.Presentation.Controllers
 
             // Paystack requires a 200 response within 5 seconds or it will retry.
             return Ok();
-        }
-
-        /// <summary>
-        /// Called by frontend after payment redirect to verify and update order status.
-        /// </summary>
-        [HttpPost("{id:guid}/verify-payment")]
-        [ProducesResponseType(typeof(OrderResponseDto), StatusCodes.Status200OK)]
-        public async Task<IActionResult> VerifyPayment(Guid id)
-        {
-            var order = await _service.Order.VerifyPaymentAsync(CurrentUserId, id);
-            return Ok(order);
         }
     }
 }
