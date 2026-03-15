@@ -23,14 +23,7 @@ public class PaystackPaymentService : IPaymentService
         _settings = settings.Value;
         _http = httpClientFactory.CreateClient("Paystack");
 
-        // Ensure the base URL is set and normalized.
-        var baseUrl = (_settings.BaseUrl ?? string.Empty).Trim();
-        if (string.IsNullOrWhiteSpace(baseUrl))
-            baseUrl = "https://api.paystack.co";
-        else
-            baseUrl = baseUrl.TrimEnd('/');
-
-        _http.BaseAddress = new Uri(baseUrl);
+        _http.BaseAddress = new Uri(_settings.BaseUrl);
         _http.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", _settings.SecretKey);
         _http.DefaultRequestHeaders.Accept
