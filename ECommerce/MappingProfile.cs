@@ -49,6 +49,8 @@ public class MappingProfile : Profile
 
         CreateMap<Order, OrderResponseDto>()
             .ForMember(dest => dest.Status,
-                opt => opt.MapFrom(src => src.Status.ToString()));
+                opt => opt.MapFrom(src => src.Status.ToString()))
+            .ForMember(dest => dest.PaymentProvider,
+                opt => opt.MapFrom(src => src.PaymentProvider));
     }
 }

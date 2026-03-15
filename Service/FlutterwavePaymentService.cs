@@ -1,5 +1,4 @@
 using System.Net.Http.Headers;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -27,7 +26,7 @@ public class FlutterwavePaymentService : IPaymentService
         _http.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", _settings.SecretKey);
         _http.DefaultRequestHeaders.Accept
-            .Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            .Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
     }
 
     public async Task<PaymentResult> CreatePaymentIntentAsync(
@@ -38,28 +37,26 @@ public class FlutterwavePaymentService : IPaymentService
                 $"Payment amount must be greater than zero. Got: {amount:C}.");
 
         if (string.IsNullOrWhiteSpace(customerEmail))
-            throw new InvalidOperationException("Customer email is required for Flutterwave payment initialization.");
+            throw new InvalidOperationException("Customer email is required for Flutterwave.");
 
-        // Flutterwave expects amount in kobo (NGN smallest unit) or cents.
-        // Multiply by 100 the same way Stripe does — works for NGN, GHS, ZAR, USD.
-        var amountInKobo = (long)Math.Round(amount * 100, MidpointRounding.AwayFromZero);
-
-        // Unique reference for this transaction — use orderId for easy reconciliation
-        var reference = $"order_{orderId:N}";
+        // Flutterwave expects the FULL amount (not kobo) — it takes the amount as-is in the currency's major unit
+        var txRef = $"order_{orderId:N}";
 
         var payload = new
         {
-            email = customerEmail,
-            amount = amountInKobo,
-            currency = currency.ToUpper(),   // Flutterwave uses uppercase: NGN, USD, GHS
-            reference = reference,
-            metadata = new { order_id = orderId.ToString() }
+            tx_ref = txRef,
+            amount = Math.Round(amount, 2),  // Full amount e.g. 5000.00 NGN
+            currency = currency.ToUpper(),
+            redirect_url = _settings.RedirectUrl,
+            customer = new { email = customerEmail },
+            meta = new { order_id = orderId.ToString() }
         };
 
         var json = JsonSerializer.Serialize(payload);
         var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-        var response = await _http.PostAsync("/transaction/initialize", content);
+        // Correct Flutterwave endpoint: POST /payments
+        var response = await _http.PostAsync("/payments", content);
         var body = await response.Content.ReadAsStringAsync();
 
         if (!response.IsSuccessStatusCode)
@@ -70,13 +67,12 @@ public class FlutterwavePaymentService : IPaymentService
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
             ?? throw new InvalidOperationException("Empty response from Flutterwave.");
 
-        if (!result.Status)
-            throw new InvalidOperationException(
-                $"Flutterwave error: {result.Message}");
+        if (result.Status != "success")
+            throw new InvalidOperationException($"Flutterwave error: {result.Message}");
 
         return new PaymentResult(
-            PaymentData: result.Data.AuthorizationUrl,  // redirect user here
-            PaymentReference: result.Data.Reference          // store on Order
+            PaymentData: result.Data.Link,   // redirect URL
+            PaymentReference: txRef          // store tx_ref on Order for webhook matching
         );
     }
 
@@ -91,18 +87,11 @@ public class FlutterwavePaymentService : IPaymentService
 
         try
         {
-            // Flutterwave signs with HMAC-SHA512 using the secret key as the key.
-            // The header sent is "x-Flutterwave-signature".
-            var keyBytes = Encoding.UTF8.GetBytes(_settings.WebhookSecret);
-            var payloadBytes = Encoding.UTF8.GetBytes(payload);
-
-            var hash = HMACSHA512.HashData(keyBytes, payloadBytes);
-            var expectedHash = Convert.ToHexString(hash).ToLower();
-
-            if (!expectedHash.Equals(signature, StringComparison.OrdinalIgnoreCase))
+            // Flutterwave sends verif-hash as a PLAIN SECRET STRING (not HMAC)
+            // Just compare the header value directly to your WebhookSecret
+            if (!signature.Equals(_settings.WebhookSecret, StringComparison.Ordinal))
                 return false;
 
-            // Parse the event to extract type and reference
             using var doc = JsonDocument.Parse(payload);
             var root = doc.RootElement;
 
@@ -110,10 +99,10 @@ public class FlutterwavePaymentService : IPaymentService
                 ? evt.GetString() ?? string.Empty
                 : string.Empty;
 
-            // Flutterwave reference is nested at data.reference
+            // Flutterwave sends tx_ref (our reference) in data.tx_ref
             paymentReference = root
                 .TryGetProperty("data", out var data) &&
-                data.TryGetProperty("reference", out var refProp)
+                data.TryGetProperty("tx_ref", out var refProp)
                     ? refProp.GetString() ?? string.Empty
                     : string.Empty;
 
@@ -125,17 +114,38 @@ public class FlutterwavePaymentService : IPaymentService
         }
     }
 
-    // ── Response models for Flutterwave API deserialization ─────────────────────
+    // ── Verify a transaction directly with the Flutterwave API ───────────────
+    public async Task<bool> VerifyTransactionAsync(string txRef)
+    {
+        // GET /transactions/verify_by_reference?tx_ref={txRef}
+        var response = await _http.GetAsync($"/transactions/verify_by_reference?tx_ref={txRef}");
+        var body = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode) return false;
+
+        var result = JsonSerializer.Deserialize<FlutterwaveVerifyResponse>(body,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        return result?.Status == "success" && result.Data?.Status == "successful";
+    }
 
     private record FlutterwaveInitializeResponse(
-        bool Status,
+        string Status,
         string Message,
         FlutterwaveInitializeData Data
     );
 
     private record FlutterwaveInitializeData(
-        [property: JsonPropertyName("authorization_url")] string AuthorizationUrl,
-        [property: JsonPropertyName("access_code")] string AccessCode,
-        [property: JsonPropertyName("reference")] string Reference
+        [property: JsonPropertyName("link")] string Link
+    );
+
+    private record FlutterwaveVerifyResponse(
+        string Status,
+        string Message,
+        FlutterwaveVerifyData? Data
+    );
+
+    private record FlutterwaveVerifyData(
+        string Status  // "successful", "failed", "pending"
     );
 }

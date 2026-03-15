@@ -125,6 +125,22 @@ public class PaystackPaymentService : IPaymentService
         }
     }
 
+    public async Task<bool> VerifyTransactionAsync(string reference)
+    {
+        var response = await _http.GetAsync($"/transaction/verify/{reference}");
+        var body = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode) return false;
+
+        var result = JsonSerializer.Deserialize<PaystackVerifyResponse>(body,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        return result?.Status == true && result.Data?.Status == "success";
+    }
+
+    private record PaystackVerifyResponse(bool Status, string Message, PaystackVerifyData? Data);
+    private record PaystackVerifyData(string Status);
+
     // ── Response models for Paystack API deserialization ─────────────────────
 
     private record PaystackInitializeResponse(

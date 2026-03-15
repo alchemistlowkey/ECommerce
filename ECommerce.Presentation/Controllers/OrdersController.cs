@@ -97,5 +97,16 @@ namespace ECommerce.Presentation.Controllers
             // Paystack requires a 200 response within 5 seconds or it will retry.
             return Ok();
         }
+
+        /// <summary>
+        /// Called by frontend after payment redirect to verify and update order status.
+        /// </summary>
+        [HttpPost("{id:guid}/verify-payment")]
+        [ProducesResponseType(typeof(OrderResponseDto), StatusCodes.Status200OK)]
+        public async Task<IActionResult> VerifyPayment(Guid id)
+        {
+            var order = await _service.Order.VerifyPaymentAsync(CurrentUserId, id);
+            return Ok(order);
+        }
     }
 }

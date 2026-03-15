@@ -176,4 +176,32 @@ public class OrderService : IOrderService
 
         await _repository.SaveAsync();
     }
+
+    public async Task<OrderResponseDto> VerifyPaymentAsync(string userId, Guid orderId)
+    {
+        var order = await _repository.Order.GetOrderAsync(orderId, trackChanges: true)
+            ?? throw new KeyNotFoundException($"Order '{orderId}' not found.");
+
+        if (order.UserId != userId)
+            throw new UnauthorizedAccessException("You are not authorized to access this order.");
+
+        // Already confirmed — return as-is
+        if (order.Status == OrderStatus.Paid || order.Status == OrderStatus.Cancelled)
+            return _mapper.Map<OrderResponseDto>(order);
+
+        // Actively verify with the payment provider
+        if (!string.IsNullOrEmpty(order.PaystackReference))
+        {
+            var payment = GetPaymentService(order.PaymentProvider ?? "Paystack");
+            var verified = await payment.VerifyTransactionAsync(order.PaystackReference);
+
+            if (verified)
+            {
+                order.Status = OrderStatus.Paid;
+                await _repository.SaveAsync();
+            }
+        }
+
+        return _mapper.Map<OrderResponseDto>(order);
+    }
 }
