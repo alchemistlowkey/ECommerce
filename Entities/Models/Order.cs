@@ -22,10 +22,22 @@ public class Order
     public OrderStatus Status { get; set; } = OrderStatus.Pending;
 
     [MaxLength(255)]
+    [Obsolete("Stripe is no longer supported; use PaymentReference instead.")]
     public string? StripePaymentIntentId { get; set; }
 
     [MaxLength(255)]
     public string? PaystackReference { get; set; }
+
+    /// <summary>
+    /// The provider transaction reference used for webhooks (Paystack or Flutterwave).
+    /// Stored in the same column as PaystackReference.
+    /// </summary>
+    [NotMapped]
+    public string? PaymentReference
+    {
+        get => PaystackReference;
+        set => PaystackReference = value;
+    }
 
     public string? PaymentProvider { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

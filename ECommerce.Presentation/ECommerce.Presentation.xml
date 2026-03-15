@@ -24,8 +24,8 @@
         </member>
         <member name="M:ECommerce.Presentation.Controllers.OrdersController.Checkout(Shared.DataTransferObjects.Order.CheckoutRequestDto)">
             <summary>
-            Checkout: converts the current cart into an order and creates a Stripe PaymentIntent.
-            Returns a clientSecret for stripe, authorization_url for Paystack, to complete payment.
+            Checkout: converts the current cart into an order and creates a payment authorization.
+            Returns an authorization URL (Paystack/Flutterwave) to complete payment.
             The PaymentProvider field in the response tells the frontend which flow to use.
             </summary>
         </member>
@@ -35,10 +35,10 @@
         <member name="M:ECommerce.Presentation.Controllers.OrdersController.GetOrder(System.Guid)">
             <summary>Get a specific order by ID.</summary>
         </member>
-        <member name="M:ECommerce.Presentation.Controllers.OrdersController.StripeWebhook">
+        <member name="M:ECommerce.Presentation.Controllers.OrdersController.FlutterwaveWebhook">
             <summary>
-            Stripe webhook endpoint. Called by Stripe after payment events.
-            Must be excluded from JWT auth — Stripe authenticates via its own signature.
+            Flutterwave webhook endpoint. Called by Flutterwave after payment events.
+            Must be excluded from JWT auth — Flutterwave authenticates via the verif-hash header.
             </summary>
         </member>
         <member name="M:ECommerce.Presentation.Controllers.OrdersController.PaystackWebhook">

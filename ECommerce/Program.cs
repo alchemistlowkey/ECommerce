@@ -27,8 +27,8 @@ builder.Services.ConfigurePaymentService(builder.Configuration);
 
 // ── Auth & Security ───────────────────────────────────────────────────────────
 builder.Services.ConfigureJwt(builder.Configuration);
-builder.Services.ConfigureStripe(builder.Configuration);
 builder.Services.ConfigurePaystack(builder.Configuration);
+builder.Services.ConfigureFlutterwave(builder.Configuration);
 
 // ── AutoMapper ────────────────────────────────────────────────────────────────
 builder.Services.AddAutoMapper(typeof(MappingProfile));

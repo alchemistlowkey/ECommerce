@@ -24,12 +24,7 @@ public class OrderRepository : RepositoryBase<Order>, IOrderRepository
             .ThenInclude(oi => oi.Product)
             .SingleOrDefaultAsync();
 
-    public async Task<Order> GetOrderByPaymentIntentAsync(string intentId, bool trackChanges) =>
-        await FindByCondition(o => o.StripePaymentIntentId.Equals(intentId), trackChanges)
-            .Include(o => o.Items)
-            .SingleOrDefaultAsync();
-
-    public async Task<Order> GetOrderByPaystackReferenceAsync(string reference, bool trackChanges) =>
+    public async Task<Order?> GetOrderByPaystackReferenceAsync(string reference, bool trackChanges) =>
         await FindByCondition(o => o.PaystackReference.Equals(reference), trackChanges)
             .Include(o => o.Items)
             .SingleOrDefaultAsync();

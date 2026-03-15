@@ -37,12 +37,13 @@ public static class ServiceExtensions
     public static void ConfigurePaymentService(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddHttpClient("Paystack");
+        services.AddHttpClient("Flutterwave");
 
         // Register BOTH providers as concrete scoped types.
         // OrderService resolves the correct one at runtime based on the
         // user's checkout selection — no config switch needed.
-        services.AddScoped<StripePaymentService>();
         services.AddScoped<PaystackPaymentService>();
+        services.AddScoped<FlutterwavePaymentService>();
     }
 
     public static void ConfigurePostgreSqlContext(this IServiceCollection services, IConfiguration configuration) =>
@@ -106,11 +107,11 @@ public static class ServiceExtensions
         });
     }
 
-    public static void ConfigureStripe(
-        this IServiceCollection services, IConfiguration configuration) =>
-        services.Configure<StripeSettings>(configuration.GetSection("Stripe"));
-
     public static void ConfigurePaystack(
         this IServiceCollection services, IConfiguration configuration) =>
         services.Configure<PaystackSettings>(configuration.GetSection("Paystack"));
+
+    public static void ConfigureFlutterwave(
+        this IServiceCollection services, IConfiguration configuration) =>
+        services.Configure<FlutterwaveSettings>(configuration.GetSection("Flutterwave"));
 }

@@ -38,8 +38,8 @@ ECommerce.sln
 │   └── ConfigurationModels/
 │       ├── JwtConfiguration.cs         ← JWT options bound from configuration
 │       ├── PaymentSettings.cs          ← base class for payment providers
-│       ├── StripeSettings.cs           ← Stripe-specific options
-│       └── PaystackSettings.cs         ← Paystack-specific options
+│       ├── PaystackSettings.cs         ← Paystack-specific options
+│       └── FlutterwaveSettings.cs      ← Flutterwave-specific options
 │
 ├── Contracts/                          ← Repository interfaces
 │   ├── IRepositoryBase.cs
@@ -123,7 +123,7 @@ Shared                 ← (no dependencies)
 
 2. **Configuration**
    - Copy `appsettings.example.json` to `appsettings.json` and adjust connection strings,
-     JWT and payment settings (Stripe/Paystack).
+     JWT and payment settings (Paystack/Flutterwave).
 
 3. **Database**
    ```bash
@@ -170,7 +170,7 @@ The Dockerfile in this repo already calls publish without that option.
 - CRUD for products
 - Shopping cart management
 - Checkout & order processing
-- Payment integration (Stripe and Paystack)
+- Payment integration (Paystack and Flutterwave)
 - Layered architecture with repository and service patterns
 - AutoMapper for DTO mapping
 - Global exception handling middleware

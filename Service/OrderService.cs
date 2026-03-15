@@ -26,9 +26,9 @@ public class OrderService : IOrderService
     // Resolve the correct payment provider at runtime based on the user's choice.
     // Both are registered as concrete scoped types in ServiceExtensions.
     private IPaymentService GetPaymentService(string provider) =>
-        provider.Equals("Paystack", StringComparison.OrdinalIgnoreCase)
-            ? _services.GetRequiredService<PaystackPaymentService>()
-            : _services.GetRequiredService<StripePaymentService>();
+        provider.Equals("Flutterwave", StringComparison.OrdinalIgnoreCase)
+            ? _services.GetRequiredService<FlutterwavePaymentService>()
+            : _services.GetRequiredService<PaystackPaymentService>();
 
     public async Task<CheckoutResponseDto> CheckoutAsync(string userId, string paymentProvider)
     {
@@ -87,16 +87,15 @@ public class OrderService : IOrderService
 
         _repository.Order.CreateOrder(order);
 
+        // Paystack/Flutterwave only support NGN in this integration.
         var result = await payment.CreatePaymentIntentAsync(
             total,
-            "usd",
+            "NGN",
             order.Id,
             user.Email);
 
-        if (payment.ProviderName.Equals("Stripe", StringComparison.OrdinalIgnoreCase))
-            order.StripePaymentIntentId = result.PaymentReference;
-        else
-            order.PaystackReference = result.PaymentReference;
+        // Store the provider transaction reference so we can match webhook callbacks.
+        order.PaystackReference = result.PaymentReference;
 
         await _repository.SaveAsync();
         await _repository.Cart.DeleteCartAsync(cart.Id);
@@ -106,7 +105,7 @@ public class OrderService : IOrderService
             OrderId = order.Id,
             PaymentData = result.PaymentData,
             TotalAmount = total,
-            PaymentProvider = payment.ProviderName   // "Stripe" or "Paystack"
+            PaymentProvider = payment.ProviderName   // "Paystack" or "Flutterwave"
         };
     }
 
@@ -129,25 +128,24 @@ public class OrderService : IOrderService
         return _mapper.Map<OrderResponseDto>(order);
     }
 
-    public async Task HandleStripeWebhookAsync(string payload, string stripeSignature)
+    public async Task HandleFlutterwaveWebhookAsync(string payload, string flutterwaveSignature)
     {
-        var stripe = _services.GetRequiredService<StripePaymentService>();
-        var isValid = stripe.ValidateWebhookSignature(
-            payload, stripeSignature, out var eventType, out var paymentReference);
+        var flutterwave = _services.GetRequiredService<FlutterwavePaymentService>();
+        var isValid = flutterwave.ValidateWebhookSignature(
+            payload, flutterwaveSignature, out var eventType, out var paymentReference);
 
         if (!isValid)
-            throw new UnauthorizedAccessException("Invalid Stripe webhook signature.");
+            throw new UnauthorizedAccessException("Invalid Flutterwave webhook signature.");
 
         var order = await _repository.Order
-            .GetOrderByPaymentIntentAsync(paymentReference, trackChanges: true);
+            .GetOrderByPaystackReferenceAsync(paymentReference, trackChanges: true);
 
         if (order is null) return;
 
         order.Status = eventType switch
         {
-            "payment_intent.succeeded" => OrderStatus.Paid,
-            "payment_intent.payment_failed" => OrderStatus.Cancelled,
-            "payment_intent.canceled" => OrderStatus.Cancelled,
+            "charge.completed" => OrderStatus.Paid,
+            "charge.failed" => OrderStatus.Cancelled,
             _ => order.Status
         };
 

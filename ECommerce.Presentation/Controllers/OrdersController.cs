@@ -21,8 +21,8 @@ namespace ECommerce.Presentation.Controllers
                 ?? throw new UnauthorizedAccessException("User Identity not found.");
 
         /// <summary>
-        /// Checkout: converts the current cart into an order and creates a Stripe PaymentIntent.
-        /// Returns a clientSecret for stripe, authorization_url for Paystack, to complete payment.
+        /// Checkout: converts the current cart into an order and creates a payment authorization.
+        /// Returns an authorization URL (Paystack/Flutterwave) to complete payment.
         /// The PaymentProvider field in the response tells the frontend which flow to use.
         /// </summary>
         [HttpPost("checkout")]
@@ -57,22 +57,22 @@ namespace ECommerce.Presentation.Controllers
         }
 
         /// <summary>
-        /// Stripe webhook endpoint. Called by Stripe after payment events.
-        /// Must be excluded from JWT auth — Stripe authenticates via its own signature.
+        /// Flutterwave webhook endpoint. Called by Flutterwave after payment events.
+        /// Must be excluded from JWT auth — Flutterwave authenticates via the verif-hash header.
         /// </summary>
-        [HttpPost("webhook/stripe")]
+        [HttpPost("webhook/flutterwave")]
         [AllowAnonymous]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> StripeWebhook()
+        public async Task<IActionResult> FlutterwaveWebhook()
         {
             var payload = await new StreamReader(Request.Body).ReadToEndAsync();
-            var signature = Request.Headers["Stripe-Signature"].ToString();
+            var signature = Request.Headers["verif-hash"].ToString();
 
             if (string.IsNullOrWhiteSpace(signature))
-                return BadRequest("Missing Stripe-Signature header.");
+                return BadRequest("Missing verif-hash header.");
 
-            await _service.Order.HandleStripeWebhookAsync(payload, signature);
+            await _service.Order.HandleFlutterwaveWebhookAsync(payload, signature);
             return Ok();
         }
 
