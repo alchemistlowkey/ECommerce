@@ -47,6 +47,11 @@
             Paystack authenticates via HMAC-SHA512 in the x-paystack-signature header.
             </summary>
         </member>
+        <member name="M:ECommerce.Presentation.Controllers.OrdersController.VerifyPayment(System.Guid)">
+            <summary>
+            Called by frontend after payment redirect to verify and update order status.
+            </summary>
+        </member>
         <member name="M:ECommerce.Presentation.Controllers.ProductsController.GetProducts(System.String,System.String,System.Int32,System.Int32)">
             <summary>Get all active products with optional search and category filter.</summary>
         </member>
