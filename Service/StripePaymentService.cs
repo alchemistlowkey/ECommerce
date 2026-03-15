@@ -18,7 +18,7 @@ public class StripePaymentService : IPaymentService
     }
 
     public async Task<PaymentResult> CreatePaymentIntentAsync(
-        decimal amount, string currency, Guid orderId)
+        decimal amount, string currency, Guid orderId, string? customerEmail = null)
     {
         const decimal stripeMaxAmount = 999_999.99m;
 

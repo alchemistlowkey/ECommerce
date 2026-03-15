@@ -13,7 +13,7 @@ public interface IPaymentService
     /// frontend needs (clientSecret for Stripe, authorization_url for Paystack)
     /// plus the internal reference to store on the Order.
     /// </summary>
-    Task<PaymentResult> CreatePaymentIntentAsync(decimal amount, string currency, Guid orderId);
+    Task<PaymentResult> CreatePaymentIntentAsync(decimal amount, string currency, Guid orderId, string? customerEmail = null);
 
     /// <summary>
     /// Validates an incoming webhook payload and extracts the event type

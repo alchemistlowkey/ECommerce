@@ -70,6 +70,10 @@ public class OrderService : IOrderService
 
         var payment = GetPaymentService(paymentProvider);
 
+        // Fetch the user's email for Paystack, which requires it for initialization.
+        var user = await _repository.User.GetUserByIdAsync(userId, trackChanges: false)
+            ?? throw new KeyNotFoundException("User not found.");
+
         var order = new Order
         {
             Id = Guid.NewGuid(),
@@ -83,7 +87,11 @@ public class OrderService : IOrderService
 
         _repository.Order.CreateOrder(order);
 
-        var result = await payment.CreatePaymentIntentAsync(total, "usd", order.Id);
+        var result = await payment.CreatePaymentIntentAsync(
+            total,
+            "usd",
+            order.Id,
+            user.Email);
 
         if (payment.ProviderName.Equals("Stripe", StringComparison.OrdinalIgnoreCase))
             order.StripePaymentIntentId = result.PaymentReference;

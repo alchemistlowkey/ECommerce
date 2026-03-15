@@ -31,11 +31,14 @@ public class PaystackPaymentService : IPaymentService
     }
 
     public async Task<PaymentResult> CreatePaymentIntentAsync(
-        decimal amount, string currency, Guid orderId)
+        decimal amount, string currency, Guid orderId, string? customerEmail = null)
     {
         if (amount <= 0)
             throw new InvalidOperationException(
                 $"Payment amount must be greater than zero. Got: {amount:C}.");
+
+        if (string.IsNullOrWhiteSpace(customerEmail))
+            throw new InvalidOperationException("Customer email is required for Paystack payment initialization.");
 
         // Paystack expects amount in kobo (NGN smallest unit) or cents.
         // Multiply by 100 the same way Stripe does — works for NGN, GHS, ZAR, USD.
@@ -46,6 +49,7 @@ public class PaystackPaymentService : IPaymentService
 
         var payload = new
         {
+            email = customerEmail,
             amount = amountInKobo,
             currency = currency.ToUpper(),   // Paystack uses uppercase: NGN, USD, GHS
             reference = reference,
