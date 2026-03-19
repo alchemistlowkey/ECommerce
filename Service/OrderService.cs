@@ -2,6 +2,7 @@ using AutoMapper;
 using Contracts;
 using Entities.Models;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Service.Contracts;
 using Shared.DataTransferObjects.Order;
 
@@ -12,15 +13,17 @@ public class OrderService : IOrderService
     private readonly IRepositoryManager _repository;
     private readonly IMapper _mapper;
     private readonly IServiceProvider _services;
+    private readonly ILogger<OrderService> _logger;
 
     public OrderService(
         IRepositoryManager repository,
         IMapper mapper,
-        IServiceProvider services)
+        IServiceProvider services, ILogger<OrderService> logger)
     {
         _repository = repository;
         _mapper = mapper;
         _services = services;
+        _logger = logger;
     }
 
     // Resolve the correct payment provider at runtime based on the user's choice.
@@ -99,6 +102,11 @@ public class OrderService : IOrderService
         await _repository.SaveAsync();
         await _repository.Cart.DeleteCartAsync(cart.Id);
 
+        _logger.LogInformation(
+            "Order {OrderId} created for user {UserId} via {Provider}. " +
+            "Total: {Total}, Reference: {Reference}, Items: {ItemCount}",
+            order.Id, userId, payment.ProviderName, total, result.PaymentReference, orderItems.Count);
+
         return new CheckoutResponseDto
         {
             OrderId = order.Id,
@@ -135,6 +143,8 @@ public class OrderService : IOrderService
     /// </summary>
     public async Task<OrderResponseDto> VerifyPaymentAsync(string userId, Guid orderId)
     {
+        _logger.LogInformation("Payment verification requested for order {OrderId} by user {UserId}", orderId, userId);
+
         var order = await _repository.Order.GetOrderAsync(orderId, trackChanges: true)
             ?? throw new KeyNotFoundException($"Order '{orderId}' not found.");
 
@@ -147,6 +157,10 @@ public class OrderService : IOrderService
             order.Status == OrderStatus.Delivered ||
             order.Status == OrderStatus.Cancelled)
         {
+            _logger.LogInformation(
+               "Order {OrderId} already in terminal status {Status}, skipping verification",
+               orderId, order.Status);
+
             return _mapper.Map<OrderResponseDto>(order);
         }
 
@@ -156,8 +170,14 @@ public class OrderService : IOrderService
             var payment = GetPaymentService(order.PaymentProvider);
             var verified = await payment.VerifyTransactionAsync(order.PaystackReference);
 
+            var previousStatus = order.Status;
             order.Status = verified ? OrderStatus.Paid : order.Status;
             await _repository.SaveAsync();
+
+            _logger.LogInformation(
+                "Order {OrderId} verification complete via {Provider}: " +
+                "verified={Verified}, status {PreviousStatus} → {NewStatus}",
+                orderId, order.PaymentProvider, verified, previousStatus, order.Status);
         }
 
         return _mapper.Map<OrderResponseDto>(order);
@@ -170,12 +190,27 @@ public class OrderService : IOrderService
             payload, flutterwaveSignature, out var eventType, out var paymentReference);
 
         if (!isValid)
+        {
+            _logger.LogWarning(
+               "Flutterwave webhook rejected — invalid signature. " +
+               "Payload length: {PayloadLength}", payload.Length);
             throw new UnauthorizedAccessException("Invalid Flutterwave webhook signature.");
+        }
+
+        _logger.LogInformation(
+            "Flutterwave webhook received: event={EventType}, reference={Reference}",
+            eventType, paymentReference);
 
         var order = await _repository.Order
             .GetOrderByPaystackReferenceAsync(paymentReference, trackChanges: true);
 
-        if (order is null) return;
+        if (order is null)
+        {
+            _logger.LogWarning("Flutterwave webhook: no order found for reference {Reference}", paymentReference);
+            return;
+        }
+
+        var previousStatus = order.Status;
 
         // Flutterwave webhook event names:
         // "charge.completed" — payment succeeded
@@ -188,6 +223,10 @@ public class OrderService : IOrderService
         };
 
         await _repository.SaveAsync();
+
+        _logger.LogInformation(
+            "Order {OrderId} status updated via Flutterwave webhook: {PreviousStatus} → {NewStatus}",
+            order.Id, previousStatus, order.Status);
     }
 
     public async Task HandlePaystackWebhookAsync(string payload, string paystackSignature)
@@ -197,12 +236,29 @@ public class OrderService : IOrderService
             payload, paystackSignature, out var eventType, out var paymentReference);
 
         if (!isValid)
+        {
+            _logger.LogWarning(
+                "Paystack webhook rejected — invalid signature. " +
+                "Payload length: {PayloadLength}", payload.Length);
             throw new UnauthorizedAccessException("Invalid Paystack webhook signature.");
+        }
+
+        _logger.LogInformation(
+            "Paystack webhook received: event={EventType}, reference={Reference}",
+            eventType, paymentReference);
 
         var order = await _repository.Order
             .GetOrderByPaystackReferenceAsync(paymentReference, trackChanges: true);
 
-        if (order is null) return;
+        if (order is null)
+        {
+            _logger.LogWarning(
+                "Paystack webhook: no order found for reference {Reference}",
+                paymentReference);
+            return;
+        }
+
+        var previousStatus = order.Status;
 
         // Paystack webhook event names:
         // "charge.success"      — payment succeeded
@@ -217,5 +273,9 @@ public class OrderService : IOrderService
         };
 
         await _repository.SaveAsync();
+
+        _logger.LogInformation(
+            "Order {OrderId} status updated via Paystack webhook: {PreviousStatus} → {NewStatus}",
+            order.Id, previousStatus, order.Status);
     }
 }

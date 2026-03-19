@@ -1,6 +1,7 @@
 using AutoMapper;
 using Contracts;
 using Entities.Models;
+using Microsoft.Extensions.Logging;
 using Service.Contracts;
 using Shared.DataTransferObjects.Product;
 
@@ -10,11 +11,13 @@ public class ProductService : IProductService
 {
     private readonly IRepositoryManager _repository;
     private readonly IMapper _mapper;
+    private readonly ILogger<ProductService> _logger;
 
-    public ProductService(IRepositoryManager repository, IMapper mapper)
+    public ProductService(IRepositoryManager repository, IMapper mapper, ILogger<ProductService> logger)
     {
         _repository = repository;
         _mapper = mapper;
+        _logger = logger;
     }
 
     public async Task<IEnumerable<ProductResponseDto>> GetAllProductsAsync(
@@ -52,6 +55,10 @@ public class ProductService : IProductService
         _repository.Product.CreateProduct(product);
         await _repository.SaveAsync();
 
+        _logger.LogInformation(
+            "Product created: {ProductId} '{ProductName}', category={Category}, price={Price}, stock={Stock}",
+            product.Id, product.Name, product.Category, product.Price, product.Stock);
+
         return _mapper.Map<ProductResponseDto>(product);
     }
 
@@ -72,6 +79,8 @@ public class ProductService : IProductService
         ApplyIsActive(request, product);
 
         await _repository.SaveAsync();
+
+        _logger.LogInformation("Product updated: {ProductId} '{ProductName}'", product.Id, product.Name);
 
         return _mapper.Map<ProductResponseDto>(product);
     }
@@ -103,5 +112,7 @@ public class ProductService : IProductService
 
         _repository.Product.DeleteProduct(product);
         await _repository.SaveAsync();
+
+        _logger.LogInformation("Product deleted: {ProductId} '{ProductName}'", product.Id, product.Name);
     }
 }
