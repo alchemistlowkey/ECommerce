@@ -24,9 +24,15 @@
         </member>
         <member name="M:ECommerce.Presentation.Controllers.OrdersController.Checkout(Shared.DataTransferObjects.Order.CheckoutRequestDto)">
             <summary>
-            Checkout: converts the current cart into an order and creates a payment authorization.
-            Returns an authorization URL (Paystack/Flutterwave) to complete payment.
-            The PaymentProvider field in the response tells the frontend which flow to use.
+            Checkout: converts the current cart into an order and creates a payment
+            authorization URL. Returns the provider's hosted payment page URL.
+            </summary>
+        </member>
+        <member name="M:ECommerce.Presentation.Controllers.OrdersController.VerifyPayment(System.Guid)">
+            <summary>
+            Verify payment status for an order by actively querying the payment provider.
+            Called by the frontend immediately after the user returns from the payment page
+            so the order status is updated without waiting for a webhook.
             </summary>
         </member>
         <member name="M:ECommerce.Presentation.Controllers.OrdersController.GetOrders">
@@ -34,23 +40,6 @@
         </member>
         <member name="M:ECommerce.Presentation.Controllers.OrdersController.GetOrder(System.Guid)">
             <summary>Get a specific order by ID.</summary>
-        </member>
-        <member name="M:ECommerce.Presentation.Controllers.OrdersController.FlutterwaveWebhook">
-            <summary>
-            Flutterwave webhook endpoint. Called by Flutterwave after payment events.
-            Must be excluded from JWT auth — Flutterwave authenticates via the verif-hash header.
-            </summary>
-        </member>
-        <member name="M:ECommerce.Presentation.Controllers.OrdersController.PaystackWebhook">
-            <summary>
-            Paystack webhook — receives payment events from Paystack.
-            Paystack authenticates via HMAC-SHA512 in the x-paystack-signature header.
-            </summary>
-        </member>
-        <member name="M:ECommerce.Presentation.Controllers.OrdersController.VerifyPayment(System.Guid)">
-            <summary>
-            Called by frontend after payment redirect to verify and update order status.
-            </summary>
         </member>
         <member name="M:ECommerce.Presentation.Controllers.ProductsController.GetProducts(System.String,System.String,System.Int32,System.Int32)">
             <summary>Get all active products with optional search and category filter.</summary>
@@ -66,6 +55,34 @@
         </member>
         <member name="M:ECommerce.Presentation.Controllers.ProductsController.DeleteProduct(System.Guid)">
             <summary>Delete a product. Admin only.</summary>
+        </member>
+        <member name="T:ECommerce.Presentation.Controllers.WebhookController">
+             <summary>
+             Handles incoming webhooks from payment providers (Paystack and Flutterwave).
+            
+             These endpoints MUST NOT inherit [Authorize] from a parent controller — they are
+             called by external servers that have no JWT token. Putting them in their own
+             controller (not nested under OrdersController which is [Authorize]) ensures
+             [AllowAnonymous] is not shadowed by a class-level [Authorize] attribute.
+            
+             The webhook 401 bug was caused by the endpoints living inside the [Authorize]
+             OrdersController. ASP.NET Core's JWT middleware challenges the request before
+             the [AllowAnonymous] attribute is evaluated in some pipeline configurations.
+             Moving them here eliminates that ambiguity entirely.
+             </summary>
+        </member>
+        <member name="M:ECommerce.Presentation.Controllers.WebhookController.FlutterwaveWebhook">
+            <summary>
+            Flutterwave webhook endpoint. Called by Flutterwave after payment events.
+            Authenticated via the "verif-hash" header (plain secret string comparison).
+            </summary>
+        </member>
+        <member name="M:ECommerce.Presentation.Controllers.WebhookController.PaystackWebhook">
+            <summary>
+            Paystack webhook endpoint. Called by Paystack after payment events.
+            Authenticated via HMAC-SHA512 in the "x-paystack-signature" header.
+            Paystack requires a 200 response within 5 seconds or it retries.
+            </summary>
         </member>
     </members>
 </doc>
